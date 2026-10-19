@@ -1,0 +1,430 @@
+/* Trebuchet MS Invoice Stylesheet strictly matching Brushspace reference screenshot */
+
+@font-face {
+  font-family: 'Trebuchet MS Local';
+  src: url('/fonts/trebuc.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Trebuchet MS Local';
+  src: url('/fonts/trebucbd.ttf') format('truetype');
+  font-weight: bold;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Trebuchet MS Local';
+  src: url('/fonts/trebucbi.ttf') format('truetype');
+  font-weight: bold;
+  font-style: italic;
+}
+
+@font-face {
+  font-family: 'Trebuchet MS Local';
+  src: url('/fonts/trebucit.ttf') format('truetype');
+  font-weight: normal;
+  font-style: italic;
+}
+
+.invoice-document-scaler {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  transition: transform 0.15s ease-out;
+}
+
+.invoice-document.a4-sheet {
+  width: 210mm;
+  min-height: 297mm;
+  padding: 13mm 14mm 12mm 14mm;
+  background-color: #ffffff;
+  color: #000000;
+  box-sizing: border-box;
+  font-family: 'Trebuchet MS Local', 'Trebuchet MS', 'Lucida Sans Unicode', sans-serif;
+  font-size: 8.52pt;
+  line-height: 1.32;
+  box-shadow: 0 4px 25px rgba(0, 0, 0, 0.15);
+  position: relative;
+  margin: 0 auto;
+}
+
+/* 1. Top Section: Logo & Company Name beside it; INVOICE title on top right */
+.inv-top-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.inv-company-header-group {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.inv-logo-box {
+  width: 74px;
+  height: 64px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.inv-logo-img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.inv-company-title-wrap {
+  display: flex;
+  align-items: center;
+}
+
+.inv-company-name {
+  margin: 0;
+  font-size: 20.5pt;
+  font-weight: bold;
+  color: #1d3d6e;
+  letter-spacing: -0.2px;
+  line-height: 1.15;
+}
+
+.inv-title {
+  font-size: 22.5pt;
+  font-weight: bold;
+  color: #798dc5;
+  letter-spacing: 0.5px;
+  margin: 0;
+}
+
+/* 2. Fix 2: Company Address block DIRECTLY BELOW Logo, starting from left margin */
+.inv-company-address {
+  font-size: 8.52pt;
+  color: #000000;
+  line-height: 1.32;
+  margin-bottom: 8px;
+}
+
+/* 3. Fix 1: Middle Row with GSTIN/Phone/Email/Website on Left; Date & Invoice No aligned on Right */
+.inv-middle-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.inv-company-contact {
+  display: flex;
+  flex-direction: column;
+}
+
+.inv-contact-line {
+  display: flex;
+  gap: 8px;
+  height: 17px;
+  line-height: 17px;
+  margin-bottom: 3.5px;
+}
+
+.inv-label-bold {
+  font-weight: bold;
+  min-width: 44px;
+}
+
+.inv-val-bold {
+  font-weight: bold;
+}
+
+.inv-link-text a {
+  color: #3a4e86;
+  text-decoration: underline;
+}
+
+/* Date & Invoice No. Outlined Fields aligned with GSTIN and Phone */
+.inv-meta-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.inv-field-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  height: 17px;
+  margin-bottom: 3.5px;
+}
+
+.inv-field-label {
+  font-size: 8.52pt;
+  color: #000000;
+  text-align: right;
+  line-height: 17px;
+}
+
+.inv-field-box {
+  width: 116px;
+  height: 17px;
+  border: 1px solid #000000;
+  background-color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 8.52pt;
+  color: #000000;
+  box-sizing: border-box;
+}
+
+/* 4. Bill To Section */
+.inv-bill-to-section {
+  width: 302px;
+  margin-bottom: 14px;
+}
+
+.inv-box-header {
+  background-color: #3a4e86;
+  color: #ffffff;
+  font-weight: bold;
+  font-size: 8.52pt;
+  padding: 2.5px 8px;
+  border: 1px solid #000000;
+  border-bottom: none;
+}
+
+.inv-bill-to-body {
+  border: 1px solid #000000;
+  font-size: 8.52pt;
+}
+
+.inv-bill-to-row {
+  padding: 2.5px 8px;
+  border-bottom: 1px solid #000000;
+}
+
+.inv-bill-to-row:last-child {
+  border-bottom: none;
+}
+
+.inv-bill-to-address {
+  min-height: 32px;
+  line-height: 1.35;
+}
+
+/* 5. Main Description Table */
+.inv-items-table-wrapper {
+  margin-bottom: 16px;
+}
+
+.inv-items-table {
+  width: 100%;
+  border-collapse: collapse;
+  border: 1px solid #000000;
+  font-size: 8.52pt;
+}
+
+.inv-items-table th {
+  background-color: #3a4e86;
+  color: #ffffff;
+  font-weight: bold;
+  font-size: 9pt;
+  padding: 3.5px 8px;
+  border: 1px solid #000000;
+}
+
+.inv-items-table td {
+  padding: 2.5px 8px;
+  height: 18px;
+  box-sizing: border-box;
+  /* NO horizontal borders between body rows matching screenshot */
+  border-left: 1px solid #000000;
+  border-right: 1px solid #000000;
+}
+
+.col-desc {
+  width: 73.3%;
+  text-align: left;
+}
+
+.col-hsn {
+  width: 10.2%;
+  text-align: center;
+}
+
+.col-amount {
+  width: 16.5%;
+  text-align: right;
+}
+
+.row-white {
+  background-color: #ffffff;
+}
+
+.row-stripe {
+  background-color: #f1f1f1; /* 0.945 grayscale from reference stream */
+}
+
+/* Subtotal Row */
+.subtotal-row {
+  border-top: 1px solid #000000;
+}
+
+.subtotal-row td {
+  height: 20px;
+}
+
+.subtotal-empty-cell {
+  border-left: none !important;
+  border-right: 1px solid #000000 !important;
+  border-top: 1px solid #000000;
+  border-bottom: 1px solid #000000;
+}
+
+.subtotal-label {
+  font-weight: bold;
+  font-size: 8.52pt;
+  text-align: left;
+  border: 1px solid #000000 !important;
+}
+
+.subtotal-value {
+  font-weight: bold;
+  font-size: 9.5pt;
+  text-align: right;
+  border: 1px solid #000000 !important;
+}
+
+/* 6. Bottom Section: Payment terms & Bank details on Left, QR on Right */
+.inv-bottom-section {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+}
+
+.inv-bottom-left {
+  flex: 1;
+  max-width: 440px;
+}
+
+.inv-terms-box {
+  margin-bottom: 10px;
+}
+
+.inv-terms-body {
+  border: 1px solid #000000;
+  padding: 3.5px 8px;
+  font-size: 8.52pt;
+  line-height: 1.35;
+  min-height: 22px;
+}
+
+.inv-account-box {
+  margin-bottom: 12px;
+}
+
+.inv-account-body {
+  border: 1px solid #000000;
+  padding: 4px 8px;
+  font-size: 8.52pt;
+  line-height: 1.4;
+}
+
+.inv-bank-name {
+  margin-bottom: 2px;
+}
+
+.inv-acct-row {
+  display: flex;
+}
+
+.inv-acct-lbl {
+  width: 76px;
+  flex-shrink: 0;
+}
+
+.inv-acct-val {
+  flex: 1;
+}
+
+.inv-footer-thankyou {
+  font-size: 11pt;
+  font-weight: bold;
+  font-style: italic;
+  color: #000000;
+  margin-top: 18px;
+}
+
+/* Right side QR */
+.inv-bottom-right {
+  width: 170px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.inv-scan-title {
+  font-size: 12pt;
+  font-weight: bold;
+  color: #000000;
+  margin-bottom: 6px;
+  text-align: center;
+}
+
+.inv-qr-card {
+  width: 165px;
+  height: 172px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.inv-qr-img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+/* Print Specific Rules */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 0;
+  }
+
+  body {
+    background: #ffffff !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .app-sidebar,
+  .app-header,
+  .invoice-form-panel,
+  .action-buttons-bar,
+  .preview-toolbar,
+  .no-print {
+    display: none !important;
+  }
+
+  .invoice-document-scaler {
+    transform: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    display: block !important;
+  }
+
+  .invoice-document.a4-sheet {
+    box-shadow: none !important;
+    margin: 0 !important;
+    width: 210mm !important;
+    height: 297mm !important;
+    min-height: 297mm !important;
+    page-break-after: avoid;
+    page-break-inside: avoid;
+  }
+}

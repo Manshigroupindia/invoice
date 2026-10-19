@@ -1,0 +1,12 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /brand_assets/{allPaths=**} {
+      // Allow public read so invoices and previews can render the logo and QR scanner
+      allow read: if true;
+      // Allow upload only for images under 5MB
+      allow write: if request.resource.size < 5 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*');
+    }
+  }
+}
