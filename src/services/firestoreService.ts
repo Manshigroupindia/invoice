@@ -116,7 +116,7 @@ export async function saveCompanySettingsFirestore(
     updatedAt: new Date().toISOString(),
   };
 
-  await setDoc(SETTINGS_DOC_REF, merged);
+  await setDoc(SETTINGS_DOC_REF, sanitizeForFirestore(merged));
 
   // If nextSequence was explicitly changed, update invoiceMetadata/numbering as well
   if (updated.nextSequence !== undefined) {
@@ -124,17 +124,17 @@ export async function saveCompanySettingsFirestore(
       const snap = await getDoc(NUMBERING_DOC_REF);
       const curFY = getIndianFinancialYear(new Date());
       if (snap.exists()) {
-        await updateDoc(NUMBERING_DOC_REF, {
+        await updateDoc(NUMBERING_DOC_REF, sanitizeForFirestore({
           nextSequence: updated.nextSequence,
           updatedAt: new Date().toISOString(),
-        });
+        }));
       } else {
-        await setDoc(NUMBERING_DOC_REF, {
+        await setDoc(NUMBERING_DOC_REF, sanitizeForFirestore({
           financialYear: curFY,
           nextSequence: updated.nextSequence,
           usedNumbers: ['MGS/2026-27/078'],
           updatedAt: new Date().toISOString(),
-        });
+        }));
       }
     } catch (e) {
       console.warn('Could not update numbering metadata sequence:', e);
@@ -226,20 +226,84 @@ export async function reserveAndCommitInvoiceNumberFirestore(
       used.push(finalNumber);
     }
 
-    transaction.set(NUMBERING_DOC_REF, {
+    transaction.set(NUMBERING_DOC_REF, sanitizeForFirestore({
       financialYear: fy,
       nextSequence: nextSeq,
       usedNumbers: used,
       updatedAt: new Date().toISOString(),
-    });
+    }));
 
-    transaction.update(SETTINGS_DOC_REF, {
+    transaction.update(SETTINGS_DOC_REF, sanitizeForFirestore({
       nextSequence: nextSeq,
       updatedAt: new Date().toISOString(),
-    });
+    }));
 
     return finalNumber;
   });
+}
+
+/**
+ * Recursively strips keys with `undefined` values so Firestore setDoc / updateDoc
+ * never throws "Unsupported field value: undefined".
+ */
+export function sanitizeForFirestore<T>(data: T): T {
+  if (data === null || data === undefined) {
+    return data;
+  }
+  if (Array.isArray(data)) {
+    return data
+      .filter((item) => item !== undefined)
+      .map((item) => sanitizeForFirestore(item)) as unknown as T;
+  }
+  if (typeof data === 'object') {
+    if (data instanceof Date) {
+      return data;
+    }
+    const result: Record<string, any> = {};
+    for (const [key, val] of Object.entries(data)) {
+      if (val !== undefined) {
+        result[key] = sanitizeForFirestore(val);
+      }
+    }
+    return result as T;
+  }
+  return data;
+}
+
+/**
+ * Prepares an InvoiceRecord for Firestore:
+ * 1. Ensures optional HSN/SAC fields (`cgstHsnSac`, `sgstHsnSac`, `igstHsnSac`) never contain `undefined`.
+ *    Missing or empty values are converted to an empty string `""` or omitted.
+ * 2. Ensures optional customer fields (`customerMobile`, `customerGstin`) never contain `undefined`.
+ * 3. Ensures line items and company snapshots have no undefined properties.
+ * 4. Strips any lingering `undefined` fields from the payload so Firestore writes never fail.
+ */
+export function prepareInvoiceForFirestore(invoice: InvoiceRecord): InvoiceRecord {
+  const isTax = invoice.invoiceType === 'tax';
+
+  const cleanItems = (invoice.items || []).map((it, idx) => ({
+    id: it.id || `item-${Date.now()}-${idx}`,
+    description: it.description !== undefined && it.description !== null ? String(it.description) : '',
+    hsnSac: it.hsnSac !== undefined && it.hsnSac !== null ? String(it.hsnSac).trim() : '',
+    amount: it.amount === undefined || it.amount === null ? '' : it.amount,
+  }));
+
+  const prepared: InvoiceRecord = {
+    ...invoice,
+    invoiceType: isTax ? 'tax' : 'regular',
+    taxMode: invoice.taxMode || 'cgst_sgst',
+    customerName: (invoice.customerName || '').trim(),
+    customerAddress: (invoice.customerAddress || '').trim(),
+    customerMobile: invoice.customerMobile !== undefined && invoice.customerMobile !== null ? String(invoice.customerMobile).trim() : '',
+    customerGstin: invoice.customerGstin !== undefined && invoice.customerGstin !== null ? String(invoice.customerGstin).trim() : '',
+    cgstHsnSac: invoice.cgstHsnSac !== undefined && invoice.cgstHsnSac !== null ? String(invoice.cgstHsnSac).trim() : '',
+    sgstHsnSac: invoice.sgstHsnSac !== undefined && invoice.sgstHsnSac !== null ? String(invoice.sgstHsnSac).trim() : '',
+    igstHsnSac: invoice.igstHsnSac !== undefined && invoice.igstHsnSac !== null ? String(invoice.igstHsnSac).trim() : '',
+    items: cleanItems,
+    companySnapshot: invoice.companySnapshot ? sanitizeForFirestore(invoice.companySnapshot) : invoice.companySnapshot,
+  };
+
+  return sanitizeForFirestore(prepared);
 }
 
 /**
@@ -251,34 +315,36 @@ export async function saveInvoiceFirestore(invoice: InvoiceRecord): Promise<Invo
   const invRef = doc(firestore, 'invoices', invoice.id);
   const snap = await getDoc(invRef);
 
+  const sanitizedInvoice = prepareInvoiceForFirestore(invoice);
+
   if (!snap.exists()) {
     // New invoice: ensure invoiceNumber is in usedNumbers
     try {
       const numSnap = await getDoc(NUMBERING_DOC_REF);
-      const fy = getIndianFinancialYear(invoice.date);
+      const fy = getIndianFinancialYear(sanitizedInvoice.date);
       if (numSnap.exists()) {
         const data = numSnap.data() as NumberingMetadata;
         const used = new Set(data.usedNumbers || []);
-        used.add(invoice.invoiceNumber);
-        await updateDoc(NUMBERING_DOC_REF, {
+        used.add(sanitizedInvoice.invoiceNumber);
+        await updateDoc(NUMBERING_DOC_REF, sanitizeForFirestore({
           usedNumbers: Array.from(used),
           updatedAt: now,
-        });
+        }));
       } else {
-        await setDoc(NUMBERING_DOC_REF, {
+        await setDoc(NUMBERING_DOC_REF, sanitizeForFirestore({
           financialYear: fy,
           nextSequence: 80,
-          usedNumbers: ['MGS/2026-27/078', invoice.invoiceNumber],
+          usedNumbers: ['MGS/2026-27/078', sanitizedInvoice.invoiceNumber],
           updatedAt: now,
-        });
+        }));
       }
     } catch (e) {
       console.warn('Could not update usedNumbers list:', e);
     }
 
     const toInsert: InvoiceRecord = {
-      ...invoice,
-      createdAt: now,
+      ...sanitizedInvoice,
+      createdAt: sanitizedInvoice.createdAt || now,
       updatedAt: now,
     };
     await setDoc(invRef, toInsert);
@@ -286,7 +352,7 @@ export async function saveInvoiceFirestore(invoice: InvoiceRecord): Promise<Invo
   } else {
     // Update existing invoice
     const toUpdate: InvoiceRecord = {
-      ...invoice,
+      ...sanitizedInvoice,
       updatedAt: now,
     };
     await setDoc(invRef, toUpdate, { merge: true });
@@ -352,10 +418,10 @@ export async function deleteInvoiceFirestore(id: string): Promise<void> {
         const data = numSnap.data() as NumberingMetadata;
         const used = new Set(data.usedNumbers || []);
         used.add(invoice.invoiceNumber);
-        await updateDoc(NUMBERING_DOC_REF, {
+        await updateDoc(NUMBERING_DOC_REF, sanitizeForFirestore({
           usedNumbers: Array.from(used),
           updatedAt: new Date().toISOString(),
-        });
+        }));
       }
     } catch (e) {
       console.warn('Failed to lock deleted invoice number in numbering metadata:', e);

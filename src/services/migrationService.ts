@@ -3,6 +3,7 @@ import { firestore } from '../lib/firebase';
 import { db } from '../db';
 import type { CompanySettings, InvoiceRecord, MigrationResult, NumberingMetadata } from '../types';
 import { getIndianFinancialYear } from '../utils/financialYear';
+import { sanitizeForFirestore, prepareInvoiceForFirestore } from './firestoreService';
 
 const MIGRATION_FLAG_KEY = 'manshi_firestore_migration_done';
 const SETTINGS_DOC_REF = doc(firestore, 'companySettings', 'main');
@@ -42,7 +43,7 @@ export async function runLocalToFirestoreMigration(force = false): Promise<Migra
           qrScannerUrl: localSettings.qrScannerUrl || localSettings.qrScannerDataUrl || '/assets/qr_scanner.jpg',
           updatedAt: localSettings.updatedAt || new Date().toISOString(),
         };
-        await setDoc(SETTINGS_DOC_REF, settingsToUpload);
+        await setDoc(SETTINGS_DOC_REF, sanitizeForFirestore(settingsToUpload));
         settingsMigrated = true;
       }
     } else {
@@ -52,11 +53,11 @@ export async function runLocalToFirestoreMigration(force = false): Promise<Migra
       const localTime = new Date(localSettings?.updatedAt || 0).getTime();
 
       if (localSettings && localTime > cloudTime) {
-        await setDoc(SETTINGS_DOC_REF, {
+        await setDoc(SETTINGS_DOC_REF, sanitizeForFirestore({
           ...cloudData,
           ...localSettings,
           updatedAt: new Date().toISOString(),
-        }, { merge: true });
+        }), { merge: true });
         settingsMigrated = true;
       }
     }
@@ -71,7 +72,7 @@ export async function runLocalToFirestoreMigration(force = false): Promise<Migra
           ...inv,
           companySnapshot: inv.companySnapshot || localSettings || (cloudSettingsSnap.data() as CompanySettings),
         };
-        await setDoc(invDocRef, cleanedInvoice);
+        await setDoc(invDocRef, prepareInvoiceForFirestore(cleanedInvoice));
         invoicesMigratedCount++;
       }
     }
@@ -110,12 +111,12 @@ export async function runLocalToFirestoreMigration(force = false): Promise<Migra
       }
     }
 
-    await setDoc(NUMBERING_DOC_REF, {
+    await setDoc(NUMBERING_DOC_REF, sanitizeForFirestore({
       financialYear: curFY,
       nextSequence: highestSeq,
       usedNumbers: Array.from(allUsedNumbers),
       updatedAt: new Date().toISOString(),
-    }, { merge: true });
+    }), { merge: true });
 
     // 5. Mark migration as completed locally without deleting IndexedDB records
     localStorage.setItem(MIGRATION_FLAG_KEY, new Date().toISOString());

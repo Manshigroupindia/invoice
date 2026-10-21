@@ -315,6 +315,11 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
     companySnapshot: settings!,
     createdAt: initialInvoice?.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString(),
+    // Preserve existing drive backup metadata if editing
+    ...(initialInvoice?.driveBackupStatus ? { driveBackupStatus: initialInvoice.driveBackupStatus } : {}),
+    ...(initialInvoice?.driveFileId ? { driveFileId: initialInvoice.driveFileId } : {}),
+    ...(initialInvoice?.driveBackupAt ? { driveBackupAt: initialInvoice.driveBackupAt } : {}),
+    ...(initialInvoice?.driveBackupError ? { driveBackupError: initialInvoice.driveBackupError } : {}),
     // Tax properties
     invoiceType,
     taxMode,
@@ -324,9 +329,9 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
     cgstAmount: totals.cgstAmount,
     sgstAmount: totals.sgstAmount,
     igstAmount: totals.igstAmount,
-    cgstHsnSac: cgstHsnSac.trim() || undefined,
-    sgstHsnSac: sgstHsnSac.trim() || undefined,
-    igstHsnSac: igstHsnSac.trim() || undefined,
+    cgstHsnSac: cgstHsnSac.trim() || '',
+    sgstHsnSac: sgstHsnSac.trim() || '',
+    igstHsnSac: igstHsnSac.trim() || '',
     totalTax: totals.totalTax,
     grandTotal: totals.grandTotal,
   };

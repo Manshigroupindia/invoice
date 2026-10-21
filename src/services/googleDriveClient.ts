@@ -3,6 +3,7 @@ import { firestore } from '../lib/firebase';
 import { db } from '../db';
 import type { InvoiceRecord, CompanySettings, DriveBackupStatus } from '../types';
 import { createInvoicePDFDocument } from '../utils/pdfGenerator';
+import { sanitizeForFirestore } from './firestoreService';
 
 // Google Drive API Configuration
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
@@ -395,7 +396,7 @@ async function updateInvoiceBackupStatus(
   // 1. Update Firestore
   try {
     const invRef = doc(firestore, 'invoices', invoiceId);
-    await updateDoc(invRef, updateData);
+    await updateDoc(invRef, sanitizeForFirestore(updateData));
   } catch (e) {
     console.warn('Could not update invoice Drive status in Firestore:', e);
   }
