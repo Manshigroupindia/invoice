@@ -28,7 +28,7 @@ export interface InvoiceLineItem {
   id: string;
   description: string;
   hsnSac: string;
-  amount: number;
+  amount: number | string;
 }
 
 export type InvoiceStatus = 'draft' | 'issued';

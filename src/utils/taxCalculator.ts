@@ -2,7 +2,7 @@ import type { InvoiceType, TaxMode } from '../types';
 
 export interface TaxCalculationInput {
   invoiceType?: InvoiceType;
-  items?: Array<{ amount: number }>;
+  items?: Array<{ amount: number | string }>;
   taxMode?: TaxMode;
   cgstRate?: number;
   sgstRate?: number;
@@ -38,11 +38,11 @@ export function calculateInvoiceTotals(input: TaxCalculationInput): TaxCalculati
   const invoiceType: InvoiceType = input.invoiceType === 'tax' ? 'tax' : 'regular';
   const taxMode: TaxMode = input.taxMode === 'igst' ? 'igst' : 'cgst_sgst';
 
-  // Subtotal is sum of items rounded to 2 decimals
-  const rawSubtotal = (input.items || []).reduce(
-    (sum, item) => sum + (Number(item.amount) || 0),
-    0
-  );
+  // Subtotal is sum of items rounded to 2 decimals (ignoring blank amounts safely)
+  const rawSubtotal = (input.items || []).reduce((sum, item) => {
+    const val = item.amount === '' || item.amount === undefined || item.amount === null ? 0 : Number(item.amount);
+    return sum + (isNaN(val) ? 0 : val);
+  }, 0);
   const subtotal = roundToTwoDecimals(rawSubtotal);
 
   if (invoiceType === 'regular') {

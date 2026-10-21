@@ -278,11 +278,13 @@ export async function createInvoicePDFDocument(
   const mobileText = mobileVal ? `Mobile  :   ${mobileVal}` : 'Mobile  :   ';
   doc.text(mobileText, marginX + 6, billToY + billToHeaderH + row1H + row2H + 10);
 
-  // Row 4: GSTIN (Tax Invoice only)
+  // Row 4: GSTIN (Tax Invoice only - bold label and value matching reference)
   if (isTax) {
     const customerGstinVal = invoice.customerGstin?.trim();
     const gstinText = customerGstinVal ? `GSTIN   :   ${customerGstinVal}` : 'GSTIN   :   ';
+    doc.setFont(fontName, 'bold');
     doc.text(gstinText, marginX + 6, billToY + billToHeaderH + row1H + row2H + row3H + 10);
+    doc.setFont(fontName, 'normal');
   }
 
   // 8. Main Description Table
@@ -327,69 +329,148 @@ export async function createInvoicePDFDocument(
     igstRate: invoice.igstRate,
   });
 
-  // Body Rows
+  // Dynamic row structure
+  interface TableRowDef {
+    type: 'item' | 'blank' | 'cgst' | 'sgst' | 'igst';
+    description: string;
+    hsnSac?: string;
+    amount?: string;
+    isBold?: boolean;
+    isSgstIndent?: boolean;
+  }
+
+  const tableRows: TableRowDef[] = [];
+  const maxDescW = colDescW - 16;
   const items = invoice.items || [];
-  const minRows = 11; // 11 rows to perfectly match the tall visual height of reference
-  const taxRowCount = isTax ? (totals.taxMode === 'igst' ? 1 : 2) : 0;
-  const totalRowsCount = Math.max(items.length + taxRowCount, minRows);
-  const rowH = 13.5;
+
+  items.forEach((item, itemIdx) => {
+    const descText = item.description || '';
+    const lines = doc.splitTextToSize(descText, maxDescW);
+    const descLines: string[] = lines.length > 0 ? lines : [''];
+
+    // Check if amount is actually provided or left blank
+    const hasAmount =
+      item.amount !== '' &&
+      item.amount !== undefined &&
+      item.amount !== null &&
+      !isNaN(Number(item.amount));
+    const amtStr = hasAmount ? formatIndianCurrency(Number(item.amount)) : '';
+
+    descLines.forEach((lineText: string, lineIdx: number) => {
+      tableRows.push({
+        type: 'item',
+        description: lineText,
+        hsnSac: lineIdx === 0 ? (item.hsnSac || '') : '',
+        amount: lineIdx === 0 ? amtStr : '',
+      });
+    });
+
+    // Leave one consistent blank line of vertical space between consecutive item descriptions
+    if (itemIdx < items.length - 1) {
+      tableRows.push({
+        type: 'blank',
+        description: '',
+        hsnSac: '',
+        amount: '',
+      });
+    }
+  });
+
+  // For Tax Invoice, leave one blank line between items and tax rows if items exist (matching reference bill)
+  if (isTax && items.length > 0) {
+    tableRows.push({
+      type: 'blank',
+      description: '',
+      hsnSac: '',
+      amount: '',
+    });
+  }
+
+  // Tax Breakdown Rows
+  if (isTax) {
+    if (totals.taxMode === 'cgst_sgst') {
+      tableRows.push({
+        type: 'cgst',
+        description: `Add: CGST @ ${totals.cgstRate || 0}%`,
+        amount: formatIndianCurrency(totals.cgstAmount),
+        isBold: true,
+      });
+      tableRows.push({
+        type: 'sgst',
+        description: `SGST @ ${totals.sgstRate || 0}%`,
+        amount: formatIndianCurrency(totals.sgstAmount),
+        isBold: true,
+        isSgstIndent: true,
+      });
+    } else if (totals.taxMode === 'igst') {
+      tableRows.push({
+        type: 'igst',
+        description: `Add: IGST @ ${totals.igstRate || 0}%`,
+        amount: formatIndianCurrency(totals.igstAmount),
+        isBold: true,
+      });
+    }
+  }
+
+  // Maintain minimum 11 rows to match the tall reference bill height
+  const minRows = 11;
+  while (tableRows.length < minRows) {
+    tableRows.push({
+      type: 'blank',
+      description: '',
+      hsnSac: '',
+      amount: '',
+    });
+  }
+
+  const totalRowsCount = tableRows.length;
+
+  // Adjust row heights dynamically so text never overlaps, clips, or crosses table borders
+  const availableBodyH = 360;
+  const standardRowH = 13.5;
+  const rowH =
+    totalRowsCount * standardRowH > availableBodyH
+      ? Math.max(10, availableBodyH / totalRowsCount)
+      : standardRowH;
   const bodyHeight = totalRowsCount * rowH;
 
   let currentY = tableY + tableHeaderH;
 
-  // Draw row backgrounds (alternating grey #f1f1f1 on rows 1, 3, 5, etc.)
+  // Draw rows and alternating grey backgrounds (#f1f1f1 on rows 1, 3, 5, etc.)
   for (let i = 0; i < totalRowsCount; i++) {
+    const row = tableRows[i];
+
     if (i % 2 === 1) {
       doc.setFillColor(altRowColor.r, altRowColor.g, altRowColor.b);
       doc.rect(col1X, currentY, tableWidth, rowH, 'F');
     }
 
-    if (isTax && totals.taxMode === 'cgst_sgst' && i === totalRowsCount - 2) {
-      // 1. CGST Row immediately above SGST
-      doc.setFont(fontName, 'bold');
+    if (row.type !== 'blank') {
+      doc.setFont(fontName, row.isBold ? 'bold' : 'normal');
       doc.setFontSize(8.52);
       doc.setTextColor(0, 0, 0);
-      const cgstLabel = `Add: CGST @ ${totals.cgstRate || 0}%`;
-      doc.text(cgstLabel, col1X + 8, currentY + 9.5);
-      const amtStr = formatIndianCurrency(totals.cgstAmount);
-      doc.text(amtStr, colRightX - 8, currentY + 9.5, { align: 'right' });
-    } else if (isTax && totals.taxMode === 'cgst_sgst' && i === totalRowsCount - 1) {
-      // 2. SGST Row immediately above Subtotal
-      doc.setFont(fontName, 'bold');
-      doc.setFontSize(8.52);
-      doc.setTextColor(0, 0, 0);
-      const addPrefixWidth = doc.getTextWidth('Add: ');
-      const sgstLabel = `SGST @ ${totals.sgstRate || 0}%`;
-      doc.text(sgstLabel, col1X + 8 + addPrefixWidth, currentY + 9.5);
-      const amtStr = formatIndianCurrency(totals.sgstAmount);
-      doc.text(amtStr, colRightX - 8, currentY + 9.5, { align: 'right' });
-    } else if (isTax && totals.taxMode === 'igst' && i === totalRowsCount - 1) {
-      // 3. IGST Row immediately above Subtotal (when in IGST mode)
-      doc.setFont(fontName, 'bold');
-      doc.setFontSize(8.52);
-      doc.setTextColor(0, 0, 0);
-      const igstLabel = `Add: IGST @ ${totals.igstRate || 0}%`;
-      doc.text(igstLabel, col1X + 8, currentY + 9.5);
-      const amtStr = formatIndianCurrency(totals.igstAmount);
-      doc.text(amtStr, colRightX - 8, currentY + 9.5, { align: 'right' });
-    } else if (i < items.length) {
-      const item = items[i];
-      if (item) {
-        doc.setFont(fontName, 'normal');
-        doc.setFontSize(8.52);
-        doc.setTextColor(0, 0, 0);
 
-        // Description (left)
-        doc.text(item.description, col1X + 8, currentY + 9.5);
+      const textY = currentY + (rowH * 0.7);
 
-        // HSN/SAC (centered)
-        if (item.hsnSac) {
-          doc.text(item.hsnSac, col2X + colHsnW / 2, currentY + 9.5, { align: 'center' });
+      // Description (left)
+      if (row.description) {
+        let descX = col1X + 8;
+        if (row.isSgstIndent) {
+          doc.setFont(fontName, 'bold');
+          const addPrefixWidth = doc.getTextWidth('Add: ');
+          descX += addPrefixWidth;
         }
+        doc.text(row.description, descX, textY);
+      }
 
-        // Amount (right aligned with 2 decimals)
-        const amtStr = formatIndianCurrency(item.amount);
-        doc.text(amtStr, colRightX - 8, currentY + 9.5, { align: 'right' });
+      // HSN/SAC (centered)
+      if (row.hsnSac) {
+        doc.text(row.hsnSac, col2X + colHsnW / 2, textY, { align: 'center' });
+      }
+
+      // Amount (right aligned with 2 decimals when present)
+      if (row.amount) {
+        doc.text(row.amount, colRightX - 8, textY, { align: 'right' });
       }
     }
 

@@ -47,19 +47,19 @@ const SAMPLE_REFERENCE_ITEMS: InvoiceLineItem[] = [
     id: 'sample-2',
     description: 'Domain',
     hsnSac: '',
-    amount: 0.00,
+    amount: '',
   },
   {
     id: 'sample-3',
     description: 'Hosting & SSL Certificate',
     hsnSac: '',
-    amount: 0.00,
+    amount: '',
   },
   {
     id: 'sample-4',
     description: 'Maintenance Fee',
     hsnSac: '',
-    amount: 0.00,
+    amount: '',
   },
 ];
 
@@ -184,7 +184,7 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
       id: `item-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
       description: '',
       hsnSac: '',
-      amount: 0,
+      amount: '',
     };
     setItems([...items, newItem]);
   };
@@ -192,9 +192,18 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
   const handleUpdateItem = (id: string, field: keyof InvoiceLineItem, value: string | number) => {
     setItems(items.map(item => {
       if (item.id === id) {
+        let finalVal: string | number = value;
+        if (field === 'amount') {
+          if (value === '' || value === undefined || value === null) {
+            finalVal = '';
+          } else {
+            const num = parseFloat(String(value));
+            finalVal = isNaN(num) ? '' : num;
+          }
+        }
         return {
           ...item,
-          [field]: field === 'amount' ? (value === '' ? 0 : parseFloat(value as string) || 0) : value,
+          [field]: finalVal,
         };
       }
       return item;
@@ -203,7 +212,7 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
 
   const handleRemoveItem = (id: string) => {
     if (items.length === 1) {
-      setItems([{ id: `item-${Date.now()}`, description: '', hsnSac: '', amount: 0 }]);
+      setItems([{ id: `item-${Date.now()}`, description: '', hsnSac: '', amount: '' }]);
       return;
     }
     setItems(items.filter(item => item.id !== id));
@@ -288,7 +297,7 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
     customerAddress: customerAddress.trim(),
     customerMobile: customerMobile.trim(),
     customerGstin: customerGstin.trim(),
-    items: items.filter(it => it.description.trim() !== '' || it.amount > 0),
+    items: items.filter(it => it.description.trim() !== '' || (it.amount !== '' && Number(it.amount) > 0)),
     subtotal,
     status: 'issued',
     companySnapshot: settings!,
@@ -383,7 +392,7 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
     setCustomerAddress('');
     setCustomerMobile('');
     setCustomerGstin('');
-    setItems([{ id: `item-${Date.now()}`, description: '', hsnSac: '', amount: 0 }]);
+    setItems([{ id: `item-${Date.now()}`, description: '', hsnSac: '', amount: '' }]);
     setInvoiceType('regular');
     setTaxMode('cgst_sgst');
     setCgstRate(0);
@@ -716,7 +725,7 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
                         step="0.01"
                         className="form-input"
                         placeholder="0.00"
-                        value={item.amount === 0 ? '' : item.amount}
+                        value={item.amount === undefined || item.amount === null ? '' : item.amount}
                         onChange={(e) => handleUpdateItem(item.id, 'amount', e.target.value)}
                         style={{ padding: '6px 10px', fontSize: '13px', textAlign: 'right' }}
                       />
@@ -794,7 +803,7 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
                           step="0.01"
                           className="form-input"
                           placeholder="0.00"
-                          value={item.amount === 0 ? '' : item.amount}
+                          value={item.amount === undefined || item.amount === null ? '' : item.amount}
                           onChange={(e) => handleUpdateItem(item.id, 'amount', e.target.value)}
                           style={{ textAlign: 'right', fontWeight: 600 }}
                         />

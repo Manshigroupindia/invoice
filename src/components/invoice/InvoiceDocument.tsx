@@ -32,11 +32,91 @@ export const InvoiceDocument: React.FC<InvoiceDocumentProps> = ({
     igstRate: invoice.igstRate,
   });
 
-  // Ensure visual balance like reference invoice (minimum 11 rows)
+  // Dynamic table rows matching PDF layout
+  interface PreviewRow {
+    id: string;
+    description: string;
+    hsnSac?: string;
+    amount?: string;
+    isBold?: boolean;
+    isSgstIndent?: boolean;
+    isBlank?: boolean;
+  }
+
+  const previewRows: PreviewRow[] = [];
+  items.forEach((item, itemIdx) => {
+    const descLines = item.description ? item.description.split('\n') : [''];
+    const hasAmount =
+      item.amount !== '' &&
+      item.amount !== undefined &&
+      item.amount !== null &&
+      !isNaN(Number(item.amount));
+    const amtStr = hasAmount ? formatIndianCurrency(Number(item.amount)) : '';
+
+    descLines.forEach((lineText, lineIdx) => {
+      previewRows.push({
+        id: `${item.id || itemIdx}-line-${lineIdx}`,
+        description: lineText,
+        hsnSac: lineIdx === 0 ? (item.hsnSac || '') : '',
+        amount: lineIdx === 0 ? amtStr : '',
+      });
+    });
+
+    // Leave one consistent blank line between consecutive item descriptions
+    if (itemIdx < items.length - 1) {
+      previewRows.push({
+        id: `blank-${itemIdx}`,
+        description: '',
+        isBlank: true,
+      });
+    }
+  });
+
+  // Leave one blank line before tax breakdown (matching reference bill)
+  if (isTax && items.length > 0) {
+    previewRows.push({
+      id: 'blank-tax-sep',
+      description: '',
+      isBlank: true,
+    });
+  }
+
+  // Tax Breakdown Rows
+  if (isTax) {
+    if (totals.taxMode === 'cgst_sgst') {
+      previewRows.push({
+        id: 'cgst-row',
+        description: `Add: CGST @ ${totals.cgstRate || 0}%`,
+        amount: formatIndianCurrency(totals.cgstAmount),
+        isBold: true,
+      });
+      previewRows.push({
+        id: 'sgst-row',
+        description: `SGST @ ${totals.sgstRate || 0}%`,
+        amount: formatIndianCurrency(totals.sgstAmount),
+        isBold: true,
+        isSgstIndent: true,
+      });
+    } else if (totals.taxMode === 'igst') {
+      previewRows.push({
+        id: 'igst-row',
+        description: `Add: IGST @ ${totals.igstRate || 0}%`,
+        amount: formatIndianCurrency(totals.igstAmount),
+        isBold: true,
+      });
+    }
+  }
+
+  // Ensure minimum 11 rows like reference invoice
   const minRows = 11;
-  const taxRowCount = isTax ? (totals.taxMode === 'igst' ? 1 : 2) : 0;
-  const totalRowsCount = Math.max(items.length + taxRowCount, minRows);
-  const emptyRowsCount = Math.max(0, totalRowsCount - taxRowCount - items.length);
+  const emptyFillCount = Math.max(0, minRows - previewRows.length);
+  for (let i = 0; i < emptyFillCount; i++) {
+    previewRows.push({
+      id: `empty-fill-${i}`,
+      description: '',
+      isBlank: true,
+    });
+  }
 
   const formattedDate = invoice.date
     ? formatDateToIndian(invoice.date)
@@ -157,7 +237,7 @@ export const InvoiceDocument: React.FC<InvoiceDocumentProps> = ({
               Mobile &nbsp;: &nbsp;{mobileVal || '+91 88604 30075'}
             </div>
             {isTax && (
-              <div className="inv-bill-to-row inv-bill-to-gstin">
+              <div className="inv-bill-to-row inv-bill-to-gstin" style={{ fontWeight: 700 }}>
                 GSTIN &nbsp; : &nbsp;{invoice.customerGstin?.trim() || ''}
               </div>
             )}
@@ -175,50 +255,24 @@ export const InvoiceDocument: React.FC<InvoiceDocumentProps> = ({
               </tr>
             </thead>
             <tbody>
-              {items.map((item, idx) => (
-                <tr key={item.id || idx} className={idx % 2 === 1 ? 'row-stripe' : 'row-white'}>
-                  <td className="col-desc">{item.description}</td>
-                  <td className="col-hsn">{item.hsnSac || ''}</td>
-                  <td className="col-amount">{formatIndianCurrency(Number(item.amount) || 0)}</td>
+              {previewRows.map((row, idx) => (
+                <tr key={row.id} className={idx % 2 === 1 ? 'row-stripe' : 'row-white'}>
+                  <td className="col-desc" style={{ fontWeight: row.isBold ? 600 : 'normal' }}>
+                    {row.isSgstIndent ? (
+                      <>
+                        <span style={{ visibility: 'hidden' }}>Add:&nbsp;</span>
+                        {row.description}
+                      </>
+                    ) : (
+                      row.description || '\u00A0'
+                    )}
+                  </td>
+                  <td className="col-hsn">{row.hsnSac || ''}</td>
+                  <td className="col-amount" style={{ fontWeight: row.isBold ? 600 : 'normal' }}>
+                    {row.amount || ''}
+                  </td>
                 </tr>
               ))}
-              {Array.from({ length: emptyRowsCount }).map((_, idx) => {
-                const totalIndex = items.length + idx;
-                return (
-                  <tr key={`empty-${idx}`} className={totalIndex % 2 === 1 ? 'row-stripe' : 'row-white'}>
-                    <td className="col-desc">&nbsp;</td>
-                    <td className="col-hsn">&nbsp;</td>
-                    <td className="col-amount">&nbsp;</td>
-                  </tr>
-                );
-              })}
-              {isTax && totals.taxMode === 'cgst_sgst' && (
-                <>
-                  <tr className={(totalRowsCount - 2) % 2 === 1 ? 'row-stripe' : 'row-white'}>
-                    <td className="col-desc" style={{ fontWeight: 600 }}>
-                      Add: CGST @ {totals.cgstRate || 0}%
-                    </td>
-                    <td className="col-hsn"></td>
-                    <td className="col-amount">{formatIndianCurrency(totals.cgstAmount)}</td>
-                  </tr>
-                  <tr className={(totalRowsCount - 1) % 2 === 1 ? 'row-stripe' : 'row-white'}>
-                    <td className="col-desc" style={{ fontWeight: 600 }}>
-                      <span style={{ visibility: 'hidden' }}>Add:&nbsp;</span>SGST @ {totals.sgstRate || 0}%
-                    </td>
-                    <td className="col-hsn"></td>
-                    <td className="col-amount">{formatIndianCurrency(totals.sgstAmount)}</td>
-                  </tr>
-                </>
-              )}
-              {isTax && totals.taxMode === 'igst' && (
-                <tr className={(totalRowsCount - 1) % 2 === 1 ? 'row-stripe' : 'row-white'}>
-                  <td className="col-desc" style={{ fontWeight: 600 }}>
-                    Add: IGST @ {totals.igstRate || 0}%
-                  </td>
-                  <td className="col-hsn"></td>
-                  <td className="col-amount">{formatIndianCurrency(totals.igstAmount)}</td>
-                </tr>
-              )}
               <tr className="subtotal-row">
                 <td className="col-desc subtotal-empty-cell"></td>
                 <td className="col-hsn subtotal-label">{isTax ? 'Total' : 'Sub-Total'}</td>
