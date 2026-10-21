@@ -141,39 +141,65 @@ export async function createInvoicePDFDocument(
 
   // 5. Contact Details (GSTIN, Phone, Email, Website)
   const contactY = Math.max(addrY + 3, 129);
+  const contactValX = marginX + 44;
+
+  // Outlined Date & Invoice No. box dimensions used for alignment and safe bounds
+  const fieldBoxW = 86.8;
+  const fieldBoxH = 11.5;
+  const fieldBoxX = pageWidth - marginX - fieldBoxW;
+  const maxContactValWidth = fieldBoxX - 25 - contactValX;
 
   // GSTIN (bold label and bold value)
   doc.setFont(fontName, 'bold');
   doc.setFontSize(8.52);
   doc.setTextColor(0, 0, 0);
   doc.text('GSTIN :', marginX, contactY);
-  doc.text(settings?.gstin || '09PQRPK4105E1ZG', marginX + 44, contactY);
+  doc.text(settings?.gstin || '09PQRPK4105E1ZG', contactValX, contactY);
 
   // Phone (bold label and bold value)
   doc.text('Phone:', marginX, contactY + 12);
-  doc.text(settings?.phone || '8076187274', marginX + 44, contactY + 12);
+  doc.text(settings?.phone || '8076187274', contactValX, contactY + 12);
 
-  // Email id:- (blue, underlined)
+  // Email id:- (blue, underlined label and value with clear gap, aligned with contact values)
   doc.setFont(fontName, 'normal');
   doc.setTextColor(linkColor.r, linkColor.g, linkColor.b);
-  const emailText = `Email id:- ${settings?.email || 'Info@Manshigroup.in'}`;
-  doc.text(emailText, marginX, contactY + 24);
-  const emailWidth = doc.getTextWidth(emailText);
   doc.setDrawColor(linkColor.r, linkColor.g, linkColor.b);
   doc.setLineWidth(0.6);
-  doc.line(marginX, contactY + 25, marginX + emailWidth, contactY + 25);
 
-  // Website:- (blue, underlined)
-  const websiteText = `Website:- ${settings?.website || 'www.Manshigroup.in'}`;
-  doc.text(websiteText, marginX, contactY + 36);
-  const websiteWidth = doc.getTextWidth(websiteText);
-  doc.line(marginX, contactY + 37, marginX + websiteWidth, contactY + 37);
+  const emailLabel = 'Email id:-';
+  doc.text(emailLabel, marginX, contactY + 24);
+  const emailLabelWidth = doc.getTextWidth(emailLabel);
+  doc.line(marginX, contactY + 25, marginX + emailLabelWidth, contactY + 25);
+
+  const emailVal = settings?.email || 'Info@Manshigroup.in';
+  let emailFontSize = 8.52;
+  while (doc.getTextWidth(emailVal) > maxContactValWidth && emailFontSize > 5) {
+    emailFontSize -= 0.25;
+    doc.setFontSize(emailFontSize);
+  }
+  doc.text(emailVal, contactValX, contactY + 24);
+  const emailValWidth = doc.getTextWidth(emailVal);
+  doc.line(contactValX, contactY + 25, contactValX + emailValWidth, contactY + 25);
+  doc.setFontSize(8.52);
+
+  // Website:- (blue, underlined label and value with clear gap, aligned with contact values)
+  const websiteLabel = 'Website:-';
+  doc.text(websiteLabel, marginX, contactY + 36);
+  const websiteLabelWidth = doc.getTextWidth(websiteLabel);
+  doc.line(marginX, contactY + 37, marginX + websiteLabelWidth, contactY + 37);
+
+  const websiteVal = settings?.website || 'www.Manshigroup.in';
+  let websiteFontSize = 8.52;
+  while (doc.getTextWidth(websiteVal) > maxContactValWidth && websiteFontSize > 5) {
+    websiteFontSize -= 0.25;
+    doc.setFontSize(websiteFontSize);
+  }
+  doc.text(websiteVal, contactValX, contactY + 36);
+  const websiteValWidth = doc.getTextWidth(websiteVal);
+  doc.line(contactValX, contactY + 37, contactValX + websiteValWidth, contactY + 37);
+  doc.setFontSize(8.52);
 
   // 6. Fix 1: Date & Invoice No. Outlined Fields ALIGNED WITH GSTIN AND PHONE
-  const fieldBoxW = 86.8;
-  const fieldBoxH = 11.5;
-  const fieldBoxX = pageWidth - marginX - fieldBoxW;
-
   const dateBoxY = contactY - 8.5; // Perfectly aligns text baseline with GSTIN
   const invNoBoxY = contactY + 12 - 8.5; // Perfectly aligns text baseline with Phone
 
@@ -220,13 +246,22 @@ export async function createInvoicePDFDocument(
   const row1H = 14;
   const row2H = Math.max(26, addressLines.length * 11 + 4);
   const row3H = 14;
-  const billToContentH = row1H + row2H + row3H;
+  const row4H = isTax ? 14 : 0;
+  const billToContentH = row1H + row2H + row3H + row4H;
 
   // Outer border around Bill To body
   doc.rect(marginX, billToY + billToHeaderH, billToW, billToContentH, 'S');
-  // Horizontal divider lines between row 1, row 2, row 3
+  // Horizontal divider lines between rows
   doc.line(marginX, billToY + billToHeaderH + row1H, marginX + billToW, billToY + billToHeaderH + row1H);
   doc.line(marginX, billToY + billToHeaderH + row1H + row2H, marginX + billToW, billToY + billToHeaderH + row1H + row2H);
+  if (isTax) {
+    doc.line(
+      marginX,
+      billToY + billToHeaderH + row1H + row2H + row3H,
+      marginX + billToW,
+      billToY + billToHeaderH + row1H + row2H + row3H
+    );
+  }
 
   // Row 1: Name
   doc.text(customerName, marginX + 6, billToY + billToHeaderH + 10);
@@ -242,6 +277,13 @@ export async function createInvoicePDFDocument(
   const mobileVal = invoice.customerMobile?.trim();
   const mobileText = mobileVal ? `Mobile  :   ${mobileVal}` : 'Mobile  :   ';
   doc.text(mobileText, marginX + 6, billToY + billToHeaderH + row1H + row2H + 10);
+
+  // Row 4: GSTIN (Tax Invoice only)
+  if (isTax) {
+    const customerGstinVal = invoice.customerGstin?.trim();
+    const gstinText = customerGstinVal ? `GSTIN   :   ${customerGstinVal}` : 'GSTIN   :   ';
+    doc.text(gstinText, marginX + 6, billToY + billToHeaderH + row1H + row2H + row3H + 10);
+  }
 
   // 8. Main Description Table
   const tableY = billToY + billToHeaderH + billToContentH + 14;
@@ -288,7 +330,8 @@ export async function createInvoicePDFDocument(
   // Body Rows
   const items = invoice.items || [];
   const minRows = 11; // 11 rows to perfectly match the tall visual height of reference
-  const totalRowsCount = isTax ? Math.max(items.length + 3, minRows) : Math.max(items.length, minRows);
+  const taxRowCount = isTax ? (totals.taxMode === 'igst' ? 1 : 2) : 0;
+  const totalRowsCount = Math.max(items.length + taxRowCount, minRows);
   const rowH = 13.5;
   const bodyHeight = totalRowsCount * rowH;
 
@@ -301,30 +344,31 @@ export async function createInvoicePDFDocument(
       doc.rect(col1X, currentY, tableWidth, rowH, 'F');
     }
 
-    if (isTax && i === totalRowsCount - 3) {
-      // 1. CGST Row immediately above Subtotal
+    if (isTax && totals.taxMode === 'cgst_sgst' && i === totalRowsCount - 2) {
+      // 1. CGST Row immediately above SGST
       doc.setFont(fontName, 'bold');
       doc.setFontSize(8.52);
       doc.setTextColor(0, 0, 0);
-      const cgstLabel = totals.cgstRate > 0 ? `CGST (${totals.cgstRate}%)` : 'CGST';
+      const cgstLabel = `Add: CGST @ ${totals.cgstRate || 0}%`;
       doc.text(cgstLabel, col1X + 8, currentY + 9.5);
       const amtStr = formatIndianCurrency(totals.cgstAmount);
       doc.text(amtStr, colRightX - 8, currentY + 9.5, { align: 'right' });
-    } else if (isTax && i === totalRowsCount - 2) {
+    } else if (isTax && totals.taxMode === 'cgst_sgst' && i === totalRowsCount - 1) {
       // 2. SGST Row immediately above Subtotal
       doc.setFont(fontName, 'bold');
       doc.setFontSize(8.52);
       doc.setTextColor(0, 0, 0);
-      const sgstLabel = totals.sgstRate > 0 ? `SGST (${totals.sgstRate}%)` : 'SGST';
-      doc.text(sgstLabel, col1X + 8, currentY + 9.5);
+      const addPrefixWidth = doc.getTextWidth('Add: ');
+      const sgstLabel = `SGST @ ${totals.sgstRate || 0}%`;
+      doc.text(sgstLabel, col1X + 8 + addPrefixWidth, currentY + 9.5);
       const amtStr = formatIndianCurrency(totals.sgstAmount);
       doc.text(amtStr, colRightX - 8, currentY + 9.5, { align: 'right' });
-    } else if (isTax && i === totalRowsCount - 1) {
-      // 3. IGST Row immediately above Subtotal
+    } else if (isTax && totals.taxMode === 'igst' && i === totalRowsCount - 1) {
+      // 3. IGST Row immediately above Subtotal (when in IGST mode)
       doc.setFont(fontName, 'bold');
       doc.setFontSize(8.52);
       doc.setTextColor(0, 0, 0);
-      const igstLabel = totals.igstRate > 0 ? `IGST (${totals.igstRate}%)` : 'IGST';
+      const igstLabel = `Add: IGST @ ${totals.igstRate || 0}%`;
       doc.text(igstLabel, col1X + 8, currentY + 9.5);
       const amtStr = formatIndianCurrency(totals.igstAmount);
       doc.text(amtStr, colRightX - 8, currentY + 9.5, { align: 'right' });

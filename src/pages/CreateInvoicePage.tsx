@@ -83,6 +83,7 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
   const [customerName, setCustomerName] = useState('');
   const [customerAddress, setCustomerAddress] = useState('');
   const [customerMobile, setCustomerMobile] = useState('');
+  const [customerGstin, setCustomerGstin] = useState('');
   const [items, setItems] = useState<InvoiceLineItem[]>(SAMPLE_REFERENCE_ITEMS);
 
   // UI States
@@ -138,6 +139,7 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
         setCustomerName(initialInvoice.customerName);
         setCustomerAddress(initialInvoice.customerAddress);
         setCustomerMobile(initialInvoice.customerMobile || '');
+        setCustomerGstin(initialInvoice.customerGstin || '');
         setItems(initialInvoice.items.length > 0 ? initialInvoice.items : SAMPLE_REFERENCE_ITEMS);
       } else {
         setIsEditingExisting(false);
@@ -147,6 +149,7 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
         setCgstRate(0);
         setSgstRate(0);
         setIgstRate(0);
+        setCustomerGstin('');
         const today = new Date().toISOString().slice(0, 10);
         setInvoiceDate(today);
         const nextNum = await previewNextInvoiceNumberFirestore(today);
@@ -210,6 +213,7 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
     setCustomerName('M/s. Brushspace');
     setCustomerAddress('F-24/2,3rd floor, Nandi Appartment,\nSector -24, Rohini, Delhi - 110042');
     setCustomerMobile('+91 88604 30075');
+    setCustomerGstin('09ARJPY9074A1Z9');
     setItems(SAMPLE_REFERENCE_ITEMS);
     onSuccessToast('Reference data for Brushspace loaded into form.');
   };
@@ -283,6 +287,7 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
     customerName: customerName.trim(),
     customerAddress: customerAddress.trim(),
     customerMobile: customerMobile.trim(),
+    customerGstin: customerGstin.trim(),
     items: items.filter(it => it.description.trim() !== '' || it.amount > 0),
     subtotal,
     status: 'issued',
@@ -377,6 +382,7 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
     setCustomerName('');
     setCustomerAddress('');
     setCustomerMobile('');
+    setCustomerGstin('');
     setItems([{ id: `item-${Date.now()}`, description: '', hsnSac: '', amount: 0 }]);
     setInvoiceType('regular');
     setTaxMode('cgst_sgst');
@@ -590,7 +596,7 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
               />
             </div>
 
-            <div className="form-group" style={{ marginBottom: 0 }}>
+            <div className="form-group" style={{ marginBottom: invoiceType === 'tax' ? '16px' : 0 }}>
               <label className="form-label">Customer Mobile Number (Optional)</label>
               <input
                 type="text"
@@ -600,6 +606,20 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
                 onChange={(e) => setCustomerMobile(e.target.value)}
               />
             </div>
+
+            {invoiceType === 'tax' && (
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label">Customer GSTIN (Optional)</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder="e.g. 09ARJPY9074A1Z9"
+                  value={customerGstin}
+                  onChange={(e) => setCustomerGstin(e.target.value.toUpperCase())}
+                  maxLength={15}
+                />
+              </div>
+            )}
           </div>
 
           {/* Invoice Information Card */}

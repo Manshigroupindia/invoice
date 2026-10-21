@@ -34,10 +34,9 @@ export const InvoiceDocument: React.FC<InvoiceDocumentProps> = ({
 
   // Ensure visual balance like reference invoice (minimum 11 rows)
   const minRows = 11;
-  const totalRowsCount = isTax ? Math.max(items.length + 3, minRows) : Math.max(items.length, minRows);
-  const emptyRowsCount = isTax
-    ? Math.max(0, totalRowsCount - 3 - items.length)
-    : Math.max(0, minRows - items.length);
+  const taxRowCount = isTax ? (totals.taxMode === 'igst' ? 1 : 2) : 0;
+  const totalRowsCount = Math.max(items.length + taxRowCount, minRows);
+  const emptyRowsCount = Math.max(0, totalRowsCount - taxRowCount - items.length);
 
   const formattedDate = invoice.date
     ? formatDateToIndian(invoice.date)
@@ -85,24 +84,34 @@ export const InvoiceDocument: React.FC<InvoiceDocumentProps> = ({
         <div className="inv-middle-row">
           <div className="inv-company-contact">
             <div className="inv-contact-line">
-              <span className="inv-label-bold">GSTIN :</span>
-              <span className="inv-val-bold">{activeSettings?.gstin || '09PQRPK4105E1ZG'}</span>
+              <span className="inv-contact-label inv-label-bold">GSTIN :</span>
+              <span className="inv-contact-val inv-val-bold">{activeSettings?.gstin || '09PQRPK4105E1ZG'}</span>
             </div>
             <div className="inv-contact-line">
-              <span className="inv-label-bold">Phone:</span>
-              <span className="inv-val-bold">{activeSettings?.phone || '8076187274'}</span>
+              <span className="inv-contact-label inv-label-bold">Phone:</span>
+              <span className="inv-contact-val inv-val-bold">{activeSettings?.phone || '8076187274'}</span>
             </div>
             <div className="inv-contact-line">
-              <span className="inv-link-text">
+              <span className="inv-contact-label inv-link-label">
                 <a href={`mailto:${activeSettings?.email || 'Info@Manshigroup.in'}`}>
-                  Email id:- {activeSettings?.email || 'Info@Manshigroup.in'}
+                  Email id:-
+                </a>
+              </span>
+              <span className="inv-contact-val inv-link-val">
+                <a href={`mailto:${activeSettings?.email || 'Info@Manshigroup.in'}`}>
+                  {activeSettings?.email || 'Info@Manshigroup.in'}
                 </a>
               </span>
             </div>
             <div className="inv-contact-line">
-              <span className="inv-link-text">
+              <span className="inv-contact-label inv-link-label">
                 <a href={`http://${activeSettings?.website || 'www.Manshigroup.in'}`} target="_blank" rel="noreferrer">
-                  Website:- {activeSettings?.website || 'www.Manshigroup.in'}
+                  Website:-
+                </a>
+              </span>
+              <span className="inv-contact-val inv-link-val">
+                <a href={`http://${activeSettings?.website || 'www.Manshigroup.in'}`} target="_blank" rel="noreferrer">
+                  {activeSettings?.website || 'www.Manshigroup.in'}
                 </a>
               </span>
             </div>
@@ -147,6 +156,11 @@ export const InvoiceDocument: React.FC<InvoiceDocumentProps> = ({
             <div className="inv-bill-to-row inv-bill-to-mobile">
               Mobile &nbsp;: &nbsp;{mobileVal || '+91 88604 30075'}
             </div>
+            {isTax && (
+              <div className="inv-bill-to-row inv-bill-to-gstin">
+                GSTIN &nbsp; : &nbsp;{invoice.customerGstin?.trim() || ''}
+              </div>
+            )}
           </div>
         </div>
 
@@ -178,30 +192,32 @@ export const InvoiceDocument: React.FC<InvoiceDocumentProps> = ({
                   </tr>
                 );
               })}
-              {isTax && (
+              {isTax && totals.taxMode === 'cgst_sgst' && (
                 <>
-                  <tr className={(totalRowsCount - 3) % 2 === 1 ? 'row-stripe' : 'row-white'}>
+                  <tr className={(totalRowsCount - 2) % 2 === 1 ? 'row-stripe' : 'row-white'}>
                     <td className="col-desc" style={{ fontWeight: 600 }}>
-                      {totals.cgstRate > 0 ? `CGST (${totals.cgstRate}%)` : 'CGST'}
+                      Add: CGST @ {totals.cgstRate || 0}%
                     </td>
                     <td className="col-hsn"></td>
                     <td className="col-amount">{formatIndianCurrency(totals.cgstAmount)}</td>
                   </tr>
-                  <tr className={(totalRowsCount - 2) % 2 === 1 ? 'row-stripe' : 'row-white'}>
+                  <tr className={(totalRowsCount - 1) % 2 === 1 ? 'row-stripe' : 'row-white'}>
                     <td className="col-desc" style={{ fontWeight: 600 }}>
-                      {totals.sgstRate > 0 ? `SGST (${totals.sgstRate}%)` : 'SGST'}
+                      <span style={{ visibility: 'hidden' }}>Add:&nbsp;</span>SGST @ {totals.sgstRate || 0}%
                     </td>
                     <td className="col-hsn"></td>
                     <td className="col-amount">{formatIndianCurrency(totals.sgstAmount)}</td>
                   </tr>
-                  <tr className={(totalRowsCount - 1) % 2 === 1 ? 'row-stripe' : 'row-white'}>
-                    <td className="col-desc" style={{ fontWeight: 600 }}>
-                      {totals.igstRate > 0 ? `IGST (${totals.igstRate}%)` : 'IGST'}
-                    </td>
-                    <td className="col-hsn"></td>
-                    <td className="col-amount">{formatIndianCurrency(totals.igstAmount)}</td>
-                  </tr>
                 </>
+              )}
+              {isTax && totals.taxMode === 'igst' && (
+                <tr className={(totalRowsCount - 1) % 2 === 1 ? 'row-stripe' : 'row-white'}>
+                  <td className="col-desc" style={{ fontWeight: 600 }}>
+                    Add: IGST @ {totals.igstRate || 0}%
+                  </td>
+                  <td className="col-hsn"></td>
+                  <td className="col-amount">{formatIndianCurrency(totals.igstAmount)}</td>
+                </tr>
               )}
               <tr className="subtotal-row">
                 <td className="col-desc subtotal-empty-cell"></td>

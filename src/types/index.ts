@@ -45,6 +45,7 @@ export interface InvoiceRecord {
   customerName: string;
   customerAddress: string;
   customerMobile?: string;
+  customerGstin?: string;
   items: InvoiceLineItem[];
   subtotal: number;
   status: InvoiceStatus;

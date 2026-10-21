@@ -124,24 +124,42 @@
 
 .inv-contact-line {
   display: flex;
-  gap: 8px;
   height: 17px;
   line-height: 17px;
   margin-bottom: 3.5px;
 }
 
+.inv-contact-label {
+  width: 58px;
+  min-width: 58px;
+  flex-shrink: 0;
+  display: inline-block;
+}
+
 .inv-label-bold {
   font-weight: bold;
-  min-width: 44px;
+}
+
+.inv-contact-val {
+  display: inline-block;
 }
 
 .inv-val-bold {
   font-weight: bold;
 }
 
-.inv-link-text a {
+.inv-link-text a,
+.inv-link-label a,
+.inv-link-val a {
   color: #3a4e86;
   text-decoration: underline;
+}
+
+.inv-link-val {
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Date & Invoice No. Outlined Fields aligned with GSTIN and Phone */

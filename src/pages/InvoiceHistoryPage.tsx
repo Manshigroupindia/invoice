@@ -168,6 +168,7 @@ export const InvoiceHistoryPage: React.FC<InvoiceHistoryPageProps> = ({
     return (
       inv.invoiceNumber.toLowerCase().includes(q) ||
       inv.customerName.toLowerCase().includes(q) ||
+      (inv.customerGstin && inv.customerGstin.toLowerCase().includes(q)) ||
       inv.date.includes(q)
     );
   });
