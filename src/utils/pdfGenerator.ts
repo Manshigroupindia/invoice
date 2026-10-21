@@ -1,5 +1,5 @@
 import { jsPDF } from 'jspdf';
-import type { InvoiceRecord, CompanySettings } from '../types';
+import type { InvoiceRecord, CompanySettings, InvoiceType } from '../types';
 import { formatDateToIndian, formatIndianCurrency } from './financialYear';
 import { calculateInvoiceTotals } from './taxCalculator';
 
@@ -521,13 +521,100 @@ export async function createInvoicePDFDocument(
   return doc;
 }
 
+/**
+ * Sanitizes a customer or business name for use in filesystem filenames:
+ * - Strips control characters
+ * - Replaces invalid filesystem characters (/ \ ? % * : | " < >) with a hyphen
+ * - Collapses consecutive hyphens and whitespace
+ * - Trims leading and trailing hyphens, periods, and spaces
+ * - Falls back to 'Customer' if the name is empty or contains only invalid characters
+ */
+export function sanitizeCustomerNameForFilename(customerName?: string): string {
+  if (!customerName) return 'Customer';
+  const sanitized = customerName
+    .replace(/[\x00-\x1f\x80-\x9f]/g, '')
+    .replace(/[/\\?%*:|"<>]/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/\s+/g, ' ')
+    .replace(/^[-. ]+|[-. ]+$/g, '')
+    .trim();
+
+  return sanitized || 'Customer';
+}
+
+/**
+ * Returns the standardized PDF filename for an invoice:
+ * - Regular Invoice: `[Customer-Business-Name] Invoice.pdf`
+ * - Tax Invoice: `[Customer-Business-Name] Tax Invoice.pdf`
+ *
+ * If duplicate detection is requested or if `appendInvoiceNumber` is true (e.g. for batch/monthly backups
+ * where multiple invoices have the same customer name), the invoice number is appended to prevent overwriting:
+ * `[Customer-Business-Name] [Tax] Invoice - [InvoiceNo].pdf`
+ */
+export function getInvoicePdfFilename(
+  invoice: { customerName?: string; invoiceType?: InvoiceType; invoiceNumber?: string },
+  options?: { appendInvoiceNumber?: boolean; existingFilenames?: Set<string> | string[] }
+): string {
+  const customer = sanitizeCustomerNameForFilename(invoice.customerName);
+  const isTax = invoice.invoiceType === 'tax';
+  const typeLabel = isTax ? 'Tax Invoice' : 'Invoice';
+  const baseName = `${customer} ${typeLabel}`;
+  let finalName = `${baseName}.pdf`;
+
+  let shouldAppend = options?.appendInvoiceNumber ?? false;
+
+  if (options?.existingFilenames) {
+    const exists = Array.isArray(options.existingFilenames)
+      ? options.existingFilenames.includes(finalName)
+      : options.existingFilenames.has(finalName);
+    if (exists) {
+      shouldAppend = true;
+    }
+  }
+
+  if (shouldAppend && invoice.invoiceNumber) {
+    const safeInvNo = invoice.invoiceNumber.replace(/[/\\?%*:|"<>]/g, '-').trim();
+    finalName = `${baseName} - ${safeInvNo}.pdf`;
+  }
+
+  return finalName;
+}
+
+/**
+ * Generates unique PDF filenames for an array of invoices (e.g. monthly backups / batch downloads).
+ * If multiple invoices have the same customer name and invoice type, appends the invoice number
+ * to ensure no files are overwritten.
+ */
+export function getUniqueInvoicePdfFilenames(
+  invoices: InvoiceRecord[]
+): Map<string, string> {
+  const result = new Map<string, string>(); // invoice.id -> unique filename
+  const counts = new Map<string, number>();
+
+  for (const inv of invoices) {
+    const base = getInvoicePdfFilename(inv);
+    counts.set(base, (counts.get(base) || 0) + 1);
+  }
+
+  const assigned = new Set<string>();
+  for (const inv of invoices) {
+    const base = getInvoicePdfFilename(inv);
+    let filename = base;
+    if ((counts.get(base) || 0) > 1 || assigned.has(filename)) {
+      filename = getInvoicePdfFilename(inv, { appendInvoiceNumber: true });
+    }
+    assigned.add(filename);
+    result.set(inv.id, filename);
+  }
+
+  return result;
+}
+
 export async function downloadInvoicePDF(
   invoice: InvoiceRecord,
   companySettings?: CompanySettings
 ): Promise<void> {
   const doc = await createInvoicePDFDocument(invoice, companySettings);
-  const safeCustomerName = invoice.customerName.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 30);
-  const safeInvoiceNo = invoice.invoiceNumber.replace(/\//g, '_');
-  const filename = `${safeInvoiceNo}_${safeCustomerName}.pdf`;
+  const filename = getInvoicePdfFilename(invoice);
   doc.save(filename);
 }
