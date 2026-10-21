@@ -44,6 +44,15 @@ export const InvoiceDocument: React.FC<InvoiceDocumentProps> = ({
   }
 
   const previewRows: PreviewRow[] = [];
+
+  // Leave only the first item row blank in the Description column (row 1 is blank)
+  previewRows.push({
+    id: 'blank-top-first-row',
+    description: '',
+    isBlank: true,
+  });
+
+  // Display items consecutively starting from row 2 without skipping rows between items
   items.forEach((item, itemIdx) => {
     const descLines = item.description ? item.description.split('\n') : [''];
     const hasAmount =
@@ -61,15 +70,6 @@ export const InvoiceDocument: React.FC<InvoiceDocumentProps> = ({
         amount: lineIdx === 0 ? amtStr : '',
       });
     });
-
-    // Leave one consistent blank line between consecutive item descriptions
-    if (itemIdx < items.length - 1) {
-      previewRows.push({
-        id: `blank-${itemIdx}`,
-        description: '',
-        isBlank: true,
-      });
-    }
   });
 
   // Leave one blank line before tax breakdown (matching reference bill)

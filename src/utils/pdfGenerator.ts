@@ -343,7 +343,16 @@ export async function createInvoicePDFDocument(
   const maxDescW = colDescW - 16;
   const items = invoice.items || [];
 
-  items.forEach((item, itemIdx) => {
+  // Leave only the first item row blank in the Description column (row 1 is blank)
+  tableRows.push({
+    type: 'blank',
+    description: '',
+    hsnSac: '',
+    amount: '',
+  });
+
+  // Display items consecutively starting from row 2 without skipping rows between items
+  items.forEach((item) => {
     const descText = item.description || '';
     const lines = doc.splitTextToSize(descText, maxDescW);
     const descLines: string[] = lines.length > 0 ? lines : [''];
@@ -364,16 +373,6 @@ export async function createInvoicePDFDocument(
         amount: lineIdx === 0 ? amtStr : '',
       });
     });
-
-    // Leave one consistent blank line of vertical space between consecutive item descriptions
-    if (itemIdx < items.length - 1) {
-      tableRows.push({
-        type: 'blank',
-        description: '',
-        hsnSac: '',
-        amount: '',
-      });
-    }
   });
 
   // For Tax Invoice, leave one blank line between items and tax rows if items exist (matching reference bill)
