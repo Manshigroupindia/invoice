@@ -77,6 +77,9 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
   const [cgstRate, setCgstRate] = useState<number>(0);
   const [sgstRate, setSgstRate] = useState<number>(0);
   const [igstRate, setIgstRate] = useState<number>(0);
+  const [cgstHsnSac, setCgstHsnSac] = useState<string>('');
+  const [sgstHsnSac, setSgstHsnSac] = useState<string>('');
+  const [igstHsnSac, setIgstHsnSac] = useState<string>('');
 
   const [invoiceNumber, setInvoiceNumber] = useState('');
   const [invoiceDate, setInvoiceDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -134,6 +137,9 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
         setCgstRate(initialInvoice.cgstRate !== undefined ? initialInvoice.cgstRate : 0);
         setSgstRate(initialInvoice.sgstRate !== undefined ? initialInvoice.sgstRate : 0);
         setIgstRate(initialInvoice.igstRate !== undefined ? initialInvoice.igstRate : 0);
+        setCgstHsnSac(initialInvoice.cgstHsnSac || '');
+        setSgstHsnSac(initialInvoice.sgstHsnSac || '');
+        setIgstHsnSac(initialInvoice.igstHsnSac || '');
         setInvoiceNumber(initialInvoice.invoiceNumber);
         setInvoiceDate(initialInvoice.date);
         setCustomerName(initialInvoice.customerName);
@@ -149,6 +155,9 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
         setCgstRate(0);
         setSgstRate(0);
         setIgstRate(0);
+        setCgstHsnSac('');
+        setSgstHsnSac('');
+        setIgstHsnSac('');
         setCustomerGstin('');
         const today = new Date().toISOString().slice(0, 10);
         setInvoiceDate(today);
@@ -224,6 +233,9 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
     setCustomerMobile('+91 88604 30075');
     setCustomerGstin('09ARJPY9074A1Z9');
     setItems(SAMPLE_REFERENCE_ITEMS);
+    setCgstHsnSac('9982');
+    setSgstHsnSac('9982');
+    setIgstHsnSac('');
     onSuccessToast('Reference data for Brushspace loaded into form.');
   };
 
@@ -312,6 +324,9 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
     cgstAmount: totals.cgstAmount,
     sgstAmount: totals.sgstAmount,
     igstAmount: totals.igstAmount,
+    cgstHsnSac: cgstHsnSac.trim() || undefined,
+    sgstHsnSac: sgstHsnSac.trim() || undefined,
+    igstHsnSac: igstHsnSac.trim() || undefined,
     totalTax: totals.totalTax,
     grandTotal: totals.grandTotal,
   };
@@ -398,6 +413,9 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
     setCgstRate(0);
     setSgstRate(0);
     setIgstRate(0);
+    setCgstHsnSac('');
+    setSgstHsnSac('');
+    setIgstHsnSac('');
     onSuccessToast('Invoice form reset.');
   };
 
@@ -865,52 +883,104 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
                     </button>
                   </div>
 
-                  {/* Rate Inputs */}
+                  {/* Rate & Optional HSN/SAC Inputs */}
                   {taxMode === 'cgst_sgst' ? (
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: '12px' }}>
-                      <div className="form-group" style={{ marginBottom: 0 }}>
-                        <label className="form-label" style={{ fontSize: '12px' }}>CGST Rate (%)</label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          max="100"
-                          className="form-input"
-                          value={cgstRate === 0 ? '' : cgstRate}
-                          placeholder="0%"
-                          onChange={(e) => handleCgstRateChange(e.target.value)}
-                          style={{ fontSize: '13px', padding: '6px 10px' }}
-                        />
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '12px' }}>
+                        <div className="form-group" style={{ marginBottom: 0 }}>
+                          <label className="form-label" style={{ fontSize: '12px' }}>CGST Rate (%)</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            max="100"
+                            className="form-input"
+                            value={cgstRate === 0 ? '' : cgstRate}
+                            placeholder="0%"
+                            onChange={(e) => handleCgstRateChange(e.target.value)}
+                            style={{ fontSize: '13px', padding: '6px 10px' }}
+                          />
+                        </div>
+                        <div className="form-group" style={{ marginBottom: 0 }}>
+                          <label className="form-label" style={{ fontSize: '12px' }}>
+                            CGST HSN/SAC <span style={{ fontWeight: 400, color: '#94a3b8' }}>(Optional)</span>
+                          </label>
+                          <input
+                            type="text"
+                            className="form-input"
+                            value={cgstHsnSac}
+                            placeholder="e.g. 9982"
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setCgstHsnSac(val);
+                              if (!sgstHsnSac || sgstHsnSac === cgstHsnSac) {
+                                setSgstHsnSac(val);
+                              }
+                            }}
+                            style={{ fontSize: '13px', padding: '6px 10px', textAlign: 'center' }}
+                          />
+                        </div>
                       </div>
-                      <div className="form-group" style={{ marginBottom: 0 }}>
-                        <label className="form-label" style={{ fontSize: '12px' }}>SGST Rate (%)</label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          max="100"
-                          className="form-input"
-                          value={sgstRate === 0 ? '' : sgstRate}
-                          placeholder="0%"
-                          onChange={(e) => handleSgstRateChange(e.target.value)}
-                          style={{ fontSize: '13px', padding: '6px 10px' }}
-                        />
+
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '12px' }}>
+                        <div className="form-group" style={{ marginBottom: 0 }}>
+                          <label className="form-label" style={{ fontSize: '12px' }}>SGST Rate (%)</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            max="100"
+                            className="form-input"
+                            value={sgstRate === 0 ? '' : sgstRate}
+                            placeholder="0%"
+                            onChange={(e) => handleSgstRateChange(e.target.value)}
+                            style={{ fontSize: '13px', padding: '6px 10px' }}
+                          />
+                        </div>
+                        <div className="form-group" style={{ marginBottom: 0 }}>
+                          <label className="form-label" style={{ fontSize: '12px' }}>
+                            SGST HSN/SAC <span style={{ fontWeight: 400, color: '#94a3b8' }}>(Optional)</span>
+                          </label>
+                          <input
+                            type="text"
+                            className="form-input"
+                            value={sgstHsnSac}
+                            placeholder="e.g. 9982"
+                            onChange={(e) => setSgstHsnSac(e.target.value)}
+                            style={{ fontSize: '13px', padding: '6px 10px', textAlign: 'center' }}
+                          />
+                        </div>
                       </div>
                     </div>
                   ) : (
-                    <div className="form-group" style={{ marginBottom: 0 }}>
-                      <label className="form-label" style={{ fontSize: '12px' }}>IGST Rate (%)</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        max="100"
-                        className="form-input"
-                        value={igstRate === 0 ? '' : igstRate}
-                        placeholder="0%"
-                        onChange={(e) => handleIgstRateChange(e.target.value)}
-                        style={{ fontSize: '13px', padding: '6px 10px' }}
-                      />
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '12px' }}>
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label className="form-label" style={{ fontSize: '12px' }}>IGST Rate (%)</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          max="100"
+                          className="form-input"
+                          value={igstRate === 0 ? '' : igstRate}
+                          placeholder="0%"
+                          onChange={(e) => handleIgstRateChange(e.target.value)}
+                          style={{ fontSize: '13px', padding: '6px 10px' }}
+                        />
+                      </div>
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label className="form-label" style={{ fontSize: '12px' }}>
+                          IGST HSN/SAC <span style={{ fontWeight: 400, color: '#94a3b8' }}>(Optional)</span>
+                        </label>
+                        <input
+                          type="text"
+                          className="form-input"
+                          value={igstHsnSac}
+                          placeholder="e.g. 9982"
+                          onChange={(e) => setIgstHsnSac(e.target.value)}
+                          style={{ fontSize: '13px', padding: '6px 10px', textAlign: 'center' }}
+                        />
+                      </div>
                     </div>
                   )}
 

@@ -87,12 +87,14 @@ export const InvoiceDocument: React.FC<InvoiceDocumentProps> = ({
       previewRows.push({
         id: 'cgst-row',
         description: `Add: CGST @ ${totals.cgstRate || 0}%`,
+        hsnSac: invoice.cgstHsnSac?.trim() || '',
         amount: formatIndianCurrency(totals.cgstAmount),
         isBold: true,
       });
       previewRows.push({
         id: 'sgst-row',
         description: `SGST @ ${totals.sgstRate || 0}%`,
+        hsnSac: invoice.sgstHsnSac?.trim() || '',
         amount: formatIndianCurrency(totals.sgstAmount),
         isBold: true,
         isSgstIndent: true,
@@ -101,6 +103,7 @@ export const InvoiceDocument: React.FC<InvoiceDocumentProps> = ({
       previewRows.push({
         id: 'igst-row',
         description: `Add: IGST @ ${totals.igstRate || 0}%`,
+        hsnSac: invoice.igstHsnSac?.trim() || '',
         amount: formatIndianCurrency(totals.igstAmount),
         isBold: true,
       });

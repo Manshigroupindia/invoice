@@ -65,6 +65,9 @@ export interface InvoiceRecord {
   cgstAmount?: number;
   sgstAmount?: number;
   igstAmount?: number;
+  cgstHsnSac?: string;
+  sgstHsnSac?: string;
+  igstHsnSac?: string;
   totalTax?: number;
   grandTotal?: number;
 }

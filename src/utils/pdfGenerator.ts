@@ -391,12 +391,14 @@ export async function createInvoicePDFDocument(
       tableRows.push({
         type: 'cgst',
         description: `Add: CGST @ ${totals.cgstRate || 0}%`,
+        hsnSac: invoice.cgstHsnSac?.trim() || '',
         amount: formatIndianCurrency(totals.cgstAmount),
         isBold: true,
       });
       tableRows.push({
         type: 'sgst',
         description: `SGST @ ${totals.sgstRate || 0}%`,
+        hsnSac: invoice.sgstHsnSac?.trim() || '',
         amount: formatIndianCurrency(totals.sgstAmount),
         isBold: true,
         isSgstIndent: true,
@@ -405,6 +407,7 @@ export async function createInvoicePDFDocument(
       tableRows.push({
         type: 'igst',
         description: `Add: IGST @ ${totals.igstRate || 0}%`,
+        hsnSac: invoice.igstHsnSac?.trim() || '',
         amount: formatIndianCurrency(totals.igstAmount),
         isBold: true,
       });
