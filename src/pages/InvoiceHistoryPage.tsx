@@ -31,6 +31,7 @@ import { deleteInvoice as deleteLocalInvoice } from '../db';
 import { formatDateToIndian, formatIndianCurrency } from '../utils/financialYear';
 import { downloadInvoicePDF } from '../utils/pdfGenerator';
 import { InvoiceDocument } from '../components/invoice/InvoiceDocument';
+import { MonthlyBackupModal } from '../components/invoice/MonthlyBackupModal';
 import { ConfirmModal } from '../components/common/Feedback';
 
 interface InvoiceHistoryPageProps {
@@ -60,6 +61,9 @@ export const InvoiceHistoryPage: React.FC<InvoiceHistoryPageProps> = ({
   const [driveConnected, setDriveConnected] = useState(false);
   const [driveEmail, setDriveEmail] = useState<string | undefined>();
   const [retryingId, setRetryingId] = useState<string | null>(null);
+
+  // Monthly Backup Modal state
+  const [isMonthlyBackupOpen, setIsMonthlyBackupOpen] = useState(false);
 
   useEffect(() => {
     // Initial fetch for settings
@@ -253,6 +257,27 @@ export const InvoiceHistoryPage: React.FC<InvoiceHistoryPageProps> = ({
               style={{ paddingLeft: '36px' }}
             />
           </div>
+
+          <button
+            type="button"
+            className="btn btn-primary"
+            style={{
+              padding: '8px 16px',
+              fontSize: '13px',
+              fontWeight: 600,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              height: '42px',
+              whiteSpace: 'nowrap',
+              flexShrink: 0,
+            }}
+            onClick={() => setIsMonthlyBackupOpen(true)}
+            title="Download Monthly Backup containing Excel register and PDFs"
+          >
+            <Download size={16} />
+            Download Monthly Backup
+          </button>
         </div>
       </div>
 
@@ -822,6 +847,16 @@ export const InvoiceHistoryPage: React.FC<InvoiceHistoryPageProps> = ({
         cancelText="Cancel"
         onConfirm={handleProceedEdit}
         onCancel={() => setInvoiceToEditConfirm(null)}
+      />
+
+      {/* Monthly Backup Modal */}
+      <MonthlyBackupModal
+        isOpen={isMonthlyBackupOpen}
+        onClose={() => setIsMonthlyBackupOpen(false)}
+        invoices={invoices}
+        companySettings={settings || undefined}
+        onSuccessToast={onSuccessToast}
+        onErrorToast={onErrorToast}
       />
     </div>
   );

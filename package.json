@@ -11,8 +11,10 @@
   },
   "dependencies": {
     "dexie": "^4.4.6",
+    "exceljs": "^4.4.0",
     "firebase": "^13.0.0",
     "jspdf": "^4.2.1",
+    "jszip": "^3.10.2",
     "lucide-react": "^1.59.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
