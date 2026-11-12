@@ -11,26 +11,32 @@ import {
   ZoomOut,
   Maximize2,
   AlertTriangle,
+  AlertCircle,
   Sparkles,
+  Users,
 } from 'lucide-react';
-import type { InvoiceRecord, InvoiceLineItem, CompanySettings, InvoiceType, TaxMode } from '../types';
+import type { InvoiceRecord, InvoiceLineItem, CompanySettings, InvoiceType, TaxMode, ClientRecord } from '../types';
 import {
   getCompanySettingsFirestore,
   previewNextInvoiceNumberFirestore,
   reserveAndCommitInvoiceNumberFirestore,
   saveInvoiceFirestore,
   subscribeCompanySettings,
+  subscribeInvoices,
 } from '../services/firestoreService';
+import { subscribeClients } from '../services/clientService';
 import { saveInvoice as saveLocalInvoice } from '../db';
 import { uploadInvoicePdfToDrive } from '../services/googleDriveClient';
 import { getIndianFinancialYear, formatInvoiceNumber, formatIndianCurrency } from '../utils/financialYear';
 import { calculateInvoiceTotals } from '../utils/taxCalculator';
-import { downloadInvoicePDF } from '../utils/pdfGenerator';
+import { downloadInvoicePDF, formatDefaultPdfFilename } from '../utils/pdfGenerator';
 import { InvoiceDocument } from '../components/invoice/InvoiceDocument';
 import { ConfirmModal } from '../components/common/Feedback';
+import { PdfFilenameModal } from '../components/invoice/PdfFilenameModal';
 
 interface CreateInvoicePageProps {
   initialInvoice?: InvoiceRecord | null;
+  initialClient?: ClientRecord | null;
   onSuccessToast: (msg: string) => void;
   onErrorToast: (msg: string) => void;
   onNavigateToHistory: () => void;
@@ -65,6 +71,7 @@ const SAMPLE_REFERENCE_ITEMS: InvoiceLineItem[] = [
 
 export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
   initialInvoice,
+  initialClient,
   onSuccessToast,
   onErrorToast,
   onNavigateToHistory,
@@ -89,6 +96,16 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
   const [customerGstin, setCustomerGstin] = useState('');
   const [items, setItems] = useState<InvoiceLineItem[]>(SAMPLE_REFERENCE_ITEMS);
 
+  // Clients & All Invoices state for autocomplete & duplicate detection
+  const [clients, setClients] = useState<ClientRecord[]>([]);
+  const [allInvoices, setAllInvoices] = useState<InvoiceRecord[]>([]);
+  const [isDuplicateNumber, setIsDuplicateNumber] = useState(false);
+
+  // PDF Download Filename Modal state
+  const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
+  const [defaultPdfFilename, setDefaultPdfFilename] = useState('');
+  const [isSavingAndDownloading, setIsSavingAndDownloading] = useState(false);
+
   // UI States
   const [previewScale, setPreviewScale] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -100,7 +117,6 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
   });
   const [activeTab, setActiveTab] = useState<'form' | 'preview'>('form');
   const [isSaving, setIsSaving] = useState(false);
-  const [isDownloading, setIsDownloading] = useState(false);
   const [showSaveConfirm, setShowSaveConfirm] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [isEditingExisting, setIsEditingExisting] = useState(false);
@@ -118,11 +134,48 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
 
   useEffect(() => {
     loadSettingsAndInit();
-    const unsub = subscribeCompanySettings((cloudSettings) => {
+    const unsubSettings = subscribeCompanySettings((cloudSettings) => {
       setSettings(cloudSettings);
     });
-    return () => unsub();
+    const unsubClients = subscribeClients((cloudClients) => {
+      setClients(cloudClients);
+    });
+    const unsubInvoices = subscribeInvoices((cloudInvoices) => {
+      setAllInvoices(cloudInvoices);
+    });
+
+    return () => {
+      unsubSettings();
+      unsubClients();
+      unsubInvoices();
+    };
   }, [initialInvoice]);
+
+  // If initialClient is passed and not editing existing invoice, load client details
+  useEffect(() => {
+    if (initialClient && !initialInvoice) {
+      setCustomerName(initialClient.companyName || '');
+      setCustomerAddress(initialClient.address || '');
+      setCustomerMobile(initialClient.mobile || '');
+      setCustomerGstin(initialClient.gstin || '');
+    }
+  }, [initialClient, initialInvoice]);
+
+  // Duplicate invoice number validation
+  useEffect(() => {
+    if (!invoiceNumber.trim()) {
+      setIsDuplicateNumber(false);
+      return;
+    }
+    const target = invoiceNumber.trim().toLowerCase();
+    const isDup = allInvoices.some(
+      (inv) =>
+        inv.id !== existingInvoiceId &&
+        inv.invoiceNumber &&
+        inv.invoiceNumber.trim().toLowerCase() === target
+    );
+    setIsDuplicateNumber(isDup);
+  }, [invoiceNumber, allInvoices, existingInvoiceId]);
 
   const loadSettingsAndInit = async () => {
     try {
@@ -336,6 +389,61 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
     grandTotal: totals.grandTotal,
   };
 
+  // Client selection helper
+  const handleSelectClient = (c: ClientRecord) => {
+    setCustomerName(c.companyName || '');
+    setCustomerAddress(c.address || '');
+    setCustomerMobile(c.mobile || '');
+    setCustomerGstin(c.gstin || '');
+    onSuccessToast(`Loaded customer details for ${c.companyName}.`);
+  };
+
+  // Core Save Method: Saves or updates invoice in Firestore & IndexedDB
+  const saveInvoiceRecordCore = async (): Promise<InvoiceRecord> => {
+    if (!customerName.trim()) {
+      throw new Error('Customer / Business Name is required.');
+    }
+    if (!customerAddress.trim()) {
+      throw new Error('Customer Address is required.');
+    }
+    if (items.length === 0 || !items.some((i) => i.description.trim())) {
+      throw new Error('Please add at least one line item with a description.');
+    }
+    if (isDuplicateNumber) {
+      throw new Error('This invoice number already exists. Please enter a unique invoice number.');
+    }
+
+    let finalInvNo = invoiceNumber.trim();
+    if (!isEditingExisting) {
+      // Atomically reserve and lock sequence in Firestore transaction
+      finalInvNo = await reserveAndCommitInvoiceNumberFirestore(
+        invoiceDate,
+        invoiceNumber,
+        existingInvoiceId || undefined
+      );
+      setInvoiceNumber(finalInvNo);
+    }
+
+    const invoiceToSave: InvoiceRecord = {
+      ...currentInvoiceData,
+      invoiceNumber: finalInvNo,
+    };
+
+    const saved = await saveInvoiceFirestore(invoiceToSave);
+    saveLocalInvoice(saved).catch((err) => console.warn('Local backup failed:', err));
+
+    // Prevent duplicate records on subsequent actions
+    setIsEditingExisting(true);
+    setExistingInvoiceId(saved.id);
+
+    // Trigger automatic background Google Drive backup (non-blocking)
+    uploadInvoicePdfToDrive(saved, settings || undefined).catch((driveErr) => {
+      console.warn('Background Google Drive backup notification:', driveErr);
+    });
+
+    return saved;
+  };
+
   // Save Validation
   const handleTriggerSave = (e: React.FormEvent) => {
     e.preventDefault();
@@ -347,8 +455,12 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
       onErrorToast('Customer Address is required.');
       return;
     }
-    if (items.length === 0 || !items.some(i => i.description.trim())) {
+    if (items.length === 0 || !items.some((i) => i.description.trim())) {
       onErrorToast('Please add at least one line item with a description.');
+      return;
+    }
+    if (isDuplicateNumber) {
+      onErrorToast('This invoice number already exists. Please enter a unique invoice number.');
       return;
     }
     setShowSaveConfirm(true);
@@ -358,28 +470,8 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
     try {
       setIsSaving(true);
       setShowSaveConfirm(false);
-
-      let finalInvNo = invoiceNumber.trim();
-      if (!isEditingExisting) {
-        // Reserve and lock number sequence permanently in Firestore transaction
-        finalInvNo = await reserveAndCommitInvoiceNumberFirestore(invoiceDate, invoiceNumber);
-      }
-
-      const invoiceToSave: InvoiceRecord = {
-        ...currentInvoiceData,
-        invoiceNumber: finalInvNo,
-      };
-
-      await saveInvoiceFirestore(invoiceToSave);
-      // Backup to local db without blocking
-      saveLocalInvoice(invoiceToSave).catch((err) => console.warn('Local backup failed:', err));
-      onSuccessToast(`Invoice ${finalInvNo} saved to Cloud Firestore.`);
-
-      // Trigger automatic background Google Drive backup (non-blocking)
-      uploadInvoicePdfToDrive(invoiceToSave, settings || undefined).catch((driveErr) => {
-        console.warn('Background Google Drive backup notification:', driveErr);
-      });
-
+      const saved = await saveInvoiceRecordCore();
+      onSuccessToast(`Invoice ${saved.invoiceNumber} saved to Cloud Firestore.`);
       onNavigateToHistory();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to save invoice';
@@ -389,16 +481,48 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
     }
   };
 
-  const handleDownloadPDF = async () => {
+  // Requirement 7 & 8: Validate invoice data, ask filename in modal, then save to Firestore and download PDF
+  const handleDownloadPDFClick = () => {
+    if (!customerName.trim()) {
+      onErrorToast('Customer / Business Name is required before downloading PDF.');
+      return;
+    }
+    if (!customerAddress.trim()) {
+      onErrorToast('Customer Address is required before downloading PDF.');
+      return;
+    }
+    if (items.length === 0 || !items.some((i) => i.description.trim())) {
+      onErrorToast('Please add at least one line item with a description.');
+      return;
+    }
+    if (isDuplicateNumber) {
+      onErrorToast('This invoice number already exists. Please enter a unique invoice number.');
+      return;
+    }
+
+    const defaultFilename = formatDefaultPdfFilename(customerName, invoiceNumber, invoiceType);
+    setDefaultPdfFilename(defaultFilename);
+    setIsPdfModalOpen(true);
+  };
+
+  const handleConfirmPdfDownload = async (chosenFilename: string) => {
     try {
-      setIsDownloading(true);
-      await downloadInvoicePDF(currentInvoiceData, settings || undefined);
+      setIsSavingAndDownloading(true);
+
+      // Requirement 8: Save the invoice to Firestore first
+      const savedInvoice = await saveInvoiceRecordCore();
+      onSuccessToast(`Invoice ${savedInvoice.invoiceNumber} saved to Cloud Firestore.`);
+
+      // After successful save, generate and download PDF
+      await downloadInvoicePDF(savedInvoice, settings || undefined, chosenFilename);
       onSuccessToast('A4 PDF generated and downloaded successfully.');
+      setIsPdfModalOpen(false);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Failed to generate PDF';
+      const msg = err instanceof Error ? err.message : 'Failed to save invoice or download PDF';
       onErrorToast(msg);
+      // If saving fails, do not proceed with PDF download!
     } finally {
-      setIsDownloading(false);
+      setIsSavingAndDownloading(false);
     }
   };
 
@@ -446,7 +570,7 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
             title="Load original sample data from Brushspace.pdf"
           >
             <Sparkles size={16} color="#d97706" />
-            <span>Load Sample (Brushspace)</span>
+            <span>Load Sample</span>
           </button>
 
           <button
@@ -471,19 +595,19 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
           <button
             type="button"
             className="btn btn-secondary"
-            onClick={handleDownloadPDF}
-            disabled={isDownloading}
+            onClick={handleDownloadPDFClick}
+            disabled={isSavingAndDownloading || isSaving}
             style={{ borderColor: '#3b82f6', color: '#1d4ed8' }}
           >
             <Download size={16} />
-            <span>{isDownloading ? 'Generating PDF...' : 'Download PDF'}</span>
+            <span>{isSavingAndDownloading ? 'Saving & Generating...' : 'Download PDF'}</span>
           </button>
 
           <button
             type="button"
             className="btn btn-primary"
             onClick={handleTriggerSave}
-            disabled={isSaving}
+            disabled={isSaving || isSavingAndDownloading}
           >
             <Save size={16} />
             <span>{isSaving ? 'Saving...' : 'Save Invoice'}</span>
@@ -604,6 +728,55 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
               Customer Details (Bill To)
             </h3>
 
+            {/* Client Autocomplete / Dropdown */}
+            {clients.length > 0 && (
+              <div
+                style={{
+                  marginBottom: '16px',
+                  background: '#f8fafc',
+                  padding: '10px 14px',
+                  borderRadius: '8px',
+                  border: '1px solid #e2e8f0',
+                }}
+              >
+                <label
+                  className="form-label"
+                  style={{
+                    fontSize: '12.5px',
+                    fontWeight: 600,
+                    color: '#1e3a8a',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    marginBottom: '6px',
+                  }}
+                >
+                  <Users size={14} />
+                  <span>Select Saved Client</span>
+                </label>
+                <select
+                  className="form-input"
+                  value=""
+                  onChange={(e) => {
+                    const cid = e.target.value;
+                    const c = clients.find((item) => item.id === cid);
+                    if (c) handleSelectClient(c);
+                  }}
+                  style={{ fontSize: '13px', background: '#ffffff' }}
+                >
+                  <option value="">-- Choose from {clients.length} saved client(s) to auto-fill --</option>
+                  {clients.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.companyName} {c.gstin ? `[GSTIN: ${c.gstin}]` : ''} {c.mobile ? `(Ph: ${c.mobile})` : ''}
+                    </option>
+                  ))}
+                </select>
+                <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>
+                  Selecting a client populates Name, Address, Mobile, and GSTIN. You can edit them freely for this invoice.
+                </div>
+              </div>
+            )}
+
             <div className="form-group">
               <label className="form-label">Customer / Business Name *</label>
               <input
@@ -682,9 +855,30 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
                   className="form-input"
                   value={invoiceNumber}
                   onChange={(e) => setInvoiceNumber(e.target.value)}
+                  style={{
+                    borderColor: isDuplicateNumber ? '#ef4444' : undefined,
+                    boxShadow: isDuplicateNumber ? '0 0 0 1px #ef4444' : undefined,
+                  }}
                   required
                 />
-                <div className="form-hint">Auto-sequenced from company configuration.</div>
+                {isDuplicateNumber ? (
+                  <div
+                    style={{
+                      color: '#ef4444',
+                      fontSize: '12px',
+                      marginTop: '4px',
+                      fontWeight: 600,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                    }}
+                  >
+                    <AlertCircle size={14} />
+                    <span>This invoice number already exists.</span>
+                  </div>
+                ) : (
+                  <div className="form-hint">Auto-sequenced from company configuration.</div>
+                )}
               </div>
             </div>
           </div>
@@ -1181,6 +1375,15 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
         isDanger={true}
         onConfirm={handleResetForm}
         onCancel={() => setShowResetConfirm(false)}
+      />
+
+      {/* Requirement 7: Ask PDF Filename Before Download Modal */}
+      <PdfFilenameModal
+        isOpen={isPdfModalOpen}
+        onClose={() => setIsPdfModalOpen(false)}
+        defaultFilename={defaultPdfFilename}
+        onConfirm={handleConfirmPdfDownload}
+        isLoading={isSavingAndDownloading}
       />
     </div>
   );

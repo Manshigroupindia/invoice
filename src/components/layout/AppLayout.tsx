@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   FileText,
   History,
+  Users,
   Settings,
   Database,
   Menu,
@@ -11,8 +12,8 @@ import type { CompanySettings } from '../../types';
 import { getCompanySettingsFirestore, subscribeCompanySettings } from '../../services/firestoreService';
 
 interface AppLayoutProps {
-  currentTab: 'create' | 'history' | 'settings';
-  onTabChange: (tab: 'create' | 'history' | 'settings') => void;
+  currentTab: 'create' | 'history' | 'clients' | 'settings';
+  onTabChange: (tab: 'create' | 'history' | 'clients' | 'settings') => void;
   onOpenBackup: () => void;
   children: React.ReactNode;
 }
@@ -45,7 +46,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  const handleNavClick = (tab: 'create' | 'history' | 'settings') => {
+  const handleNavClick = (tab: 'create' | 'history' | 'clients' | 'settings') => {
     onTabChange(tab);
     setIsMobileMenuOpen(false);
   };
@@ -104,6 +105,15 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
           >
             <History size={18} />
             <span>Invoice History</span>
+          </button>
+
+          <button
+            type="button"
+            className={`nav-link ${currentTab === 'clients' ? 'active' : ''}`}
+            onClick={() => handleNavClick('clients')}
+          >
+            <Users size={18} />
+            <span>Clients</span>
           </button>
 
           <button

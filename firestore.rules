@@ -67,6 +67,13 @@ service cloud.firestore {
       allow write: if false; // Only Admin SDK (Cloud Functions) may write
     }
 
+    // 5. Clients Collection: client directory
+    match /clients/{clientId} {
+      allow read: if true;
+      allow write: if isAuthenticated() || request.time < timestamp.date(2026, 12, 31);
+      allow delete: if isAuthenticated() || request.time < timestamp.date(2026, 12, 31);
+    }
+
     // 5. Internal Server-Only Security Collections: NEVER accessible to clients
     match /_oauthPendingStates/{stateId} {
       allow read, write: if false; // Private to Cloud Functions Admin SDK

@@ -33,11 +33,13 @@ export function getIndianFinancialYear(dateInput: Date | string): string {
 export function formatInvoiceNumber(
   prefix: string,
   financialYear: string,
-  sequence: number
+  sequence: number,
+  padLength: number = 2
 ): string {
   const cleanPrefix = (prefix || 'MGS').trim().toUpperCase();
   const cleanFY = financialYear.trim();
-  const paddedSeq = String(sequence).padStart(3, '0');
+  const targetPad = Math.max(2, padLength);
+  const paddedSeq = String(sequence).padStart(targetPad, '0');
   return `${cleanPrefix}/${cleanFY}/${paddedSeq}`;
 }
 
@@ -45,19 +47,56 @@ export function parseInvoiceNumber(invoiceNumber: string): {
   prefix: string;
   financialYear: string;
   sequence: number;
+  padLength: number;
 } | null {
+  if (!invoiceNumber) return null;
   const parts = invoiceNumber.trim().split('/');
   if (parts.length === 3) {
-    const seq = parseInt(parts[2], 10);
+    const rawSeq = parts[2];
+    const seq = parseInt(rawSeq, 10);
     if (!isNaN(seq)) {
       return {
         prefix: parts[0],
         financialYear: parts[1],
         sequence: seq,
+        padLength: rawSeq.length,
       };
     }
   }
   return null;
+}
+
+/**
+ * Extracts the trailing numeric sequence from an invoice number string.
+ * e.g. "MGS/2026-27/01" -> 1
+ *      "MGS/2026-27/24" -> 24
+ *      "MGS/2026-27/078" -> 78
+ */
+export function extractInvoiceSequenceNumber(invoiceNumber: string): number {
+  if (!invoiceNumber) return 0;
+  const trimmed = invoiceNumber.trim();
+  const match = trimmed.match(/(\d+)(?!.*\d)/);
+  if (match) {
+    const num = parseInt(match[1], 10);
+    return isNaN(num) ? 0 : num;
+  }
+  return 0;
+}
+
+/**
+ * Compares two invoice records or objects with invoiceNumber in ascending numerical order
+ * based on the sequence number at the end of the invoice number.
+ */
+export function compareInvoiceNumbersAsc(
+  a: { invoiceNumber?: string },
+  b: { invoiceNumber?: string }
+): number {
+  const seqA = extractInvoiceSequenceNumber(a.invoiceNumber || '');
+  const seqB = extractInvoiceSequenceNumber(b.invoiceNumber || '');
+  if (seqA !== seqB) {
+    return seqA - seqB;
+  }
+  return (a.invoiceNumber || '').localeCompare(b.invoiceNumber || '');
 }
 
 export function formatDateToIndian(dateStr: string): string {

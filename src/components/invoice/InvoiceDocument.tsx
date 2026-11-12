@@ -326,13 +326,9 @@ export const InvoiceDocument: React.FC<InvoiceDocumentProps> = ({
                 </div>
               </div>
             </div>
-
-            <div className="inv-footer-thankyou">
-              Thank You For Your Business! Eager to Serve You Again
-            </div>
           </div>
 
-          {/* Right Column: SCAN AND PAY */}
+          {/* Right Column: SCAN AND PAY & Digital Signature Badge */}
           <div className="inv-bottom-right">
             <div className="inv-scan-title">SCAN AND PAY</div>
             <div className="inv-qr-card">
@@ -342,7 +338,25 @@ export const InvoiceDocument: React.FC<InvoiceDocumentProps> = ({
                 <div className="inv-qr-placeholder">QR Scanner</div>
               )}
             </div>
+
+            {/* Digital Signature Badge */}
+            <div className="inv-digital-signature-badge">
+              <div className="inv-badge-icon-circle">
+                <svg className="inv-badge-icon-svg" viewBox="0 0 16 16" fill="none">
+                  <path d="M4.5 8.2L6.8 10.5L11.8 5.5" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </div>
+              <div className="inv-badge-text-block">
+                <div className="inv-badge-title">Digitally Signed</div>
+                <div className="inv-badge-subtitle">Authorized Signatory</div>
+              </div>
+            </div>
           </div>
+        </div>
+
+        {/* Thank You Footer */}
+        <div className="inv-footer-thankyou">
+          Thank You For Your Business! Eager to Serve You Again
         </div>
       </div>
     </div>

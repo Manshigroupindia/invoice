@@ -428,7 +428,7 @@ export async function createInvoicePDFDocument(
   const totalRowsCount = tableRows.length;
 
   // Adjust row heights dynamically so text never overlaps, clips, or crosses table borders
-  const availableBodyH = 360;
+  const availableBodyH = 300;
   const standardRowH = 13.5;
   const rowH =
     totalRowsCount * standardRowH > availableBodyH
@@ -594,8 +594,51 @@ export async function createInvoicePDFDocument(
     console.warn('Error adding QR scanner to PDF:', err);
   }
 
-  // 11. Thank You Footer
-  const footerY = acctBoxY + acctHeaderH + acctContentH + 24;
+  // 11. Digital Signature Badge (Bottom Right, below QR Scanner)
+  const qrBottomY = qrTopY + 16 + 129;
+  const badgeW = 124;
+  const badgeH = 34;
+  const badgeX = qrX;
+  const badgeY = qrBottomY + 9;
+  const badgeRadius = 3;
+
+  // Background & border: subtle rounded card matching invoice styling
+  doc.setFillColor(245, 247, 251); // #f5f7fb soft navy tint
+  doc.setDrawColor(navyColor.r, navyColor.g, navyColor.b); // #3a4e86
+  doc.setLineWidth(0.65);
+  doc.roundedRect(badgeX, badgeY, badgeW, badgeH, badgeRadius, badgeRadius, 'FD');
+
+  // Verified Icon: navy circle with crisp white checkmark
+  const iconCenterX = badgeX + 15;
+  const iconCenterY = badgeY + badgeH / 2;
+  const iconRadius = 7.5;
+
+  doc.setFillColor(navyColor.r, navyColor.g, navyColor.b);
+  doc.circle(iconCenterX, iconCenterY, iconRadius, 'F');
+
+  // Crisp white checkmark
+  doc.setDrawColor(255, 255, 255);
+  doc.setLineWidth(1.3);
+  doc.line(iconCenterX - 3.4, iconCenterY - 0.2, iconCenterX - 0.8, iconCenterY + 2.6);
+  doc.line(iconCenterX - 0.8, iconCenterY + 2.6, iconCenterX + 3.8, iconCenterY - 2.8);
+
+  // Badge Text
+  const textStartX = badgeX + 27;
+  doc.setFont(fontName, 'bold');
+  doc.setFontSize(8.2);
+  doc.setTextColor(companyTitleColor.r, companyTitleColor.g, companyTitleColor.b);
+  doc.text('Digitally Signed', textStartX, badgeY + 14.5);
+
+  doc.setFont(fontName, 'normal');
+  doc.setFontSize(7.2);
+  doc.setTextColor(80, 80, 80);
+  doc.text('Authorized Signatory', textStartX, badgeY + 25.5);
+
+  // 12. Thank You Footer (Positioned cleanly below both columns)
+  const acctBottomY = acctBoxY + acctHeaderH + acctContentH;
+  const badgeBottomY = badgeY + badgeH;
+  const footerY = Math.max(acctBottomY + 24, badgeBottomY + 18);
+
   doc.setFont(fontName, 'bolditalic');
   doc.setFontSize(11);
   doc.setTextColor(0, 0, 0);
@@ -693,11 +736,60 @@ export function getUniqueInvoicePdfFilenames(
   return result;
 }
 
+/**
+ * Sanitizes a filename for filesystem download:
+ * - Replaces illegal characters [/\\?%*:|"<>]/g with '-'
+ * - Collapses consecutive spaces
+ * - Ensures it ends with '.pdf'
+ */
+export function sanitizePdfFilename(filename: string): string {
+  let cleaned = (filename || '')
+    .trim()
+    .replace(/[/\\?%*:|"<>]/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  // Strip existing .pdf extension if present to sanitize base name cleanly
+  if (cleaned.toLowerCase().endsWith('.pdf')) {
+    cleaned = cleaned.slice(0, -4).trim();
+  }
+
+  // Remove leading/trailing dashes or dots
+  cleaned = cleaned.replace(/^[-. ]+|[-. ]+$/g, '').trim();
+
+  if (!cleaned) {
+    cleaned = 'Invoice';
+  }
+
+  return `${cleaned}.pdf`;
+}
+
+/**
+ * Generates a sensible default PDF filename based on the customer name and invoice number:
+ * e.g. "Brushspace Invoice - MGS-2026-27-01.pdf"
+ */
+export function formatDefaultPdfFilename(
+  customerName?: string,
+  invoiceNumber?: string,
+  invoiceType?: InvoiceType
+): string {
+  const customer = sanitizeCustomerNameForFilename(customerName) || 'Customer';
+  const isTax = invoiceType === 'tax';
+  const typeLabel = isTax ? 'Tax Invoice' : 'Invoice';
+  const safeInvNo = (invoiceNumber || '').replace(/[/\\?%*:|"<>]/g, '-').trim();
+
+  if (safeInvNo) {
+    return `${customer} ${typeLabel} - ${safeInvNo}.pdf`;
+  }
+  return `${customer} ${typeLabel}.pdf`;
+}
+
 export async function downloadInvoicePDF(
   invoice: InvoiceRecord,
-  companySettings?: CompanySettings
+  companySettings?: CompanySettings,
+  customFilename?: string
 ): Promise<void> {
   const doc = await createInvoicePDFDocument(invoice, companySettings);
-  const filename = getInvoicePdfFilename(invoice);
+  const filename = customFilename ? sanitizePdfFilename(customFilename) : getInvoicePdfFilename(invoice);
   doc.save(filename);
 }

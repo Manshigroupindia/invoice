@@ -14,7 +14,13 @@ import {
 } from 'firebase/firestore';
 import { firestore } from '../lib/firebase';
 import type { CompanySettings, InvoiceRecord, NumberingMetadata } from '../types';
-import { getIndianFinancialYear, formatInvoiceNumber } from '../utils/financialYear';
+import {
+  getIndianFinancialYear,
+  formatInvoiceNumber,
+  extractInvoiceSequenceNumber,
+  parseInvoiceNumber,
+} from '../utils/financialYear';
+import { autoUpsertClientFromInvoice } from './clientService';
 
 export const DEFAULT_SETTINGS: CompanySettings = {
   companyName: 'Manshi Group Of Services',
@@ -148,34 +154,114 @@ export async function saveCompanySettingsFirestore(
  * 2. NUMBERING SEQUENCE & RESERVATION (TRANSACTIONAL)
  */
 
+export async function getHighestSequenceForFinancialYear(
+  fy: string
+): Promise<{ maxSeq: number; padLength: number; usedNumbers: string[] }> {
+  try {
+    const invoicesSnap = await getDocs(INVOICES_COLL_REF);
+    const used = new Set<string>();
+    let maxSeq = 0;
+    let maxPad = 2;
+
+    invoicesSnap.forEach((d) => {
+      const inv = d.data() as InvoiceRecord;
+      if (inv.invoiceNumber) {
+        const numStr = inv.invoiceNumber.trim();
+        used.add(numStr);
+        const invFy = numStr.includes(`/${fy}/`)
+          ? fy
+          : getIndianFinancialYear(inv.date || new Date().toISOString());
+
+        if (invFy === fy) {
+          const parsed = parseInvoiceNumber(numStr);
+          if (parsed) {
+            if (parsed.sequence > maxSeq) {
+              maxSeq = parsed.sequence;
+              maxPad = parsed.padLength;
+            }
+          } else {
+            const seq = extractInvoiceSequenceNumber(numStr);
+            if (seq > maxSeq) {
+              maxSeq = seq;
+            }
+          }
+        }
+      }
+    });
+
+    const metaSnap = await getDoc(NUMBERING_DOC_REF);
+    if (metaSnap.exists()) {
+      const meta = metaSnap.data() as NumberingMetadata;
+      if (Array.isArray(meta.usedNumbers)) {
+        meta.usedNumbers.forEach((n) => {
+          const trimmed = n.trim();
+          used.add(trimmed);
+          if (trimmed.includes(`/${fy}/`)) {
+            const seq = extractInvoiceSequenceNumber(trimmed);
+            if (seq > maxSeq) {
+              maxSeq = seq;
+            }
+          }
+        });
+      }
+      if (meta.financialYear === fy && typeof meta.nextSequence === 'number') {
+        if (meta.nextSequence - 1 > maxSeq) {
+          maxSeq = meta.nextSequence - 1;
+        }
+      }
+    }
+
+    return { maxSeq, padLength: maxPad, usedNumbers: Array.from(used) };
+  } catch (err) {
+    console.warn('Error reading highest sequence for financial year:', err);
+    return { maxSeq: 0, padLength: 2, usedNumbers: [] };
+  }
+}
+
+export async function checkInvoiceNumberExistsFirestore(
+  invoiceNumber: string,
+  excludeId?: string
+): Promise<boolean> {
+  if (!invoiceNumber || !invoiceNumber.trim()) return false;
+  const target = invoiceNumber.trim().toLowerCase();
+  try {
+    const snap = await getDocs(INVOICES_COLL_REF);
+    let exists = false;
+    snap.forEach((d) => {
+      if (!excludeId || d.id !== excludeId) {
+        const inv = d.data() as InvoiceRecord;
+        if (inv.invoiceNumber && inv.invoiceNumber.trim().toLowerCase() === target) {
+          exists = true;
+        }
+      }
+    });
+    return exists;
+  } catch (err) {
+    console.warn('Error checking if invoice number exists in Firestore:', err);
+    return false;
+  }
+}
+
 export async function previewNextInvoiceNumberFirestore(dateStr: string): Promise<string> {
   const settings = await getCompanySettingsFirestore();
   const prefix = settings.invoicePrefix || 'MGS';
   const fy = getIndianFinancialYear(dateStr);
 
   try {
-    const snap = await getDoc(NUMBERING_DOC_REF);
-    let nextSeq = fy === '2026-27' ? 79 : 1;
-    let used: string[] = [];
+    const { maxSeq, padLength, usedNumbers } = await getHighestSequenceForFinancialYear(fy);
+    let nextSeq = maxSeq > 0 ? maxSeq + 1 : (fy === '2026-27' ? 79 : 1);
+    const targetPad = Math.max(2, padLength);
+    let candidate = formatInvoiceNumber(prefix, fy, nextSeq, targetPad);
 
-    if (snap.exists()) {
-      const data = snap.data() as NumberingMetadata;
-      if (data.financialYear === fy && data.nextSequence) {
-        nextSeq = data.nextSequence;
-      }
-      used = data.usedNumbers || [];
-    }
-
-    let candidate = formatInvoiceNumber(prefix, fy, nextSeq);
-    while (used.includes(candidate)) {
+    while (usedNumbers.some((u) => u.toLowerCase() === candidate.toLowerCase())) {
       nextSeq++;
-      candidate = formatInvoiceNumber(prefix, fy, nextSeq);
+      candidate = formatInvoiceNumber(prefix, fy, nextSeq, targetPad);
     }
 
     return candidate;
   } catch (err) {
-    console.warn('Error reading numbering metadata from Firestore, falling back to local calculation:', err);
-    return formatInvoiceNumber(prefix, fy, 79);
+    console.warn('Error previewing next invoice number, falling back to 01:', err);
+    return formatInvoiceNumber(prefix, fy, 1, 2);
   }
 }
 
@@ -184,7 +270,8 @@ export async function previewNextInvoiceNumberFirestore(dateStr: string): Promis
  */
 export async function reserveAndCommitInvoiceNumberFirestore(
   dateStr: string,
-  manualInvoiceNo?: string
+  manualInvoiceNo?: string,
+  excludeId?: string
 ): Promise<string> {
   const settings = await getCompanySettingsFirestore();
   const prefix = settings.invoicePrefix || 'MGS';
@@ -203,26 +290,28 @@ export async function reserveAndCommitInvoiceNumberFirestore(
       used = Array.isArray(data.usedNumbers) ? [...data.usedNumbers] : used;
     }
 
-    let finalNumber = manualInvoiceNo?.trim();
+    let finalNumber = manualInvoiceNo ? manualInvoiceNo.trim() : '';
     if (!finalNumber) {
-      let candidate = formatInvoiceNumber(prefix, fy, nextSeq);
-      while (used.includes(candidate)) {
+      let candidate = formatInvoiceNumber(prefix, fy, nextSeq, 2);
+      while (used.some((u) => u.toLowerCase() === candidate.toLowerCase())) {
         nextSeq++;
-        candidate = formatInvoiceNumber(prefix, fy, nextSeq);
+        candidate = formatInvoiceNumber(prefix, fy, nextSeq, 2);
       }
       finalNumber = candidate;
       nextSeq++;
     } else {
-      const parsed = finalNumber.split('/');
-      if (parsed.length === 3 && parsed[1] === fy) {
-        const num = parseInt(parsed[2], 10);
-        if (!isNaN(num) && num >= nextSeq) {
-          nextSeq = num + 1;
-        }
+      const isUsed = used.some((u) => u.toLowerCase() === finalNumber.toLowerCase());
+      if (isUsed && !excludeId) {
+        throw new Error(`This invoice number already exists.`);
+      }
+
+      const seq = extractInvoiceSequenceNumber(finalNumber);
+      if (seq >= nextSeq) {
+        nextSeq = seq + 1;
       }
     }
 
-    if (!used.includes(finalNumber)) {
+    if (!used.some((u) => u.toLowerCase() === finalNumber.toLowerCase())) {
       used.push(finalNumber);
     }
 
@@ -316,6 +405,20 @@ export async function saveInvoiceFirestore(invoice: InvoiceRecord): Promise<Invo
   const snap = await getDoc(invRef);
 
   const sanitizedInvoice = prepareInvoiceForFirestore(invoice);
+
+  // Validate duplicate invoice number before saving
+  const isDuplicate = await checkInvoiceNumberExistsFirestore(
+    sanitizedInvoice.invoiceNumber,
+    invoice.id
+  );
+  if (isDuplicate) {
+    throw new Error('This invoice number already exists.');
+  }
+
+  // Auto-make customer available in Clients collection
+  autoUpsertClientFromInvoice(sanitizedInvoice).catch((err) => {
+    console.warn('Auto client sync error:', err);
+  });
 
   if (!snap.exists()) {
     // New invoice: ensure invoiceNumber is in usedNumbers

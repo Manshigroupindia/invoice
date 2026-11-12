@@ -1,3 +1,13 @@
+export interface ClientRecord {
+  id: string;
+  companyName: string;
+  address: string;
+  mobile?: string;
+  gstin?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface CompanySettings {
   id?: number | string;
   companyName: string;

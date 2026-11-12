@@ -411,6 +411,57 @@
   object-fit: contain;
 }
 
+/* Digital Signature Badge in Bottom Right */
+.inv-digital-signature-badge {
+  width: 165px;
+  height: 46px;
+  background-color: #f5f7fb;
+  border: 1px solid #3a4e86;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  padding: 5px 8px;
+  box-sizing: border-box;
+  margin-top: 10px;
+  gap: 8px;
+}
+
+.inv-badge-icon-circle {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background-color: #3a4e86;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.inv-badge-icon-svg {
+  width: 14px;
+  height: 14px;
+}
+
+.inv-badge-text-block {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  text-align: left;
+}
+
+.inv-badge-title {
+  font-weight: bold;
+  font-size: 8.2pt;
+  color: #2c3964;
+  line-height: 1.2;
+}
+
+.inv-badge-subtitle {
+  font-size: 7.2pt;
+  color: #555555;
+  line-height: 1.2;
+}
+
 /* Print Specific Rules */
 @media print {
   @page {

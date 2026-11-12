@@ -1,17 +1,19 @@
 import { useState, useEffect } from 'react';
-import type { InvoiceRecord, ToastMessage } from './types';
+import type { InvoiceRecord, ToastMessage, ClientRecord } from './types';
 import { initializeDatabase } from './db';
 import { runLocalToFirestoreMigration } from './services/migrationService';
 import { AppLayout } from './components/layout/AppLayout';
 import { CreateInvoicePage } from './pages/CreateInvoicePage';
 import { InvoiceHistoryPage } from './pages/InvoiceHistoryPage';
+import { ClientsPage } from './pages/ClientsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { ToastContainer } from './components/common/Feedback';
 import { BackupModal } from './components/common/BackupModal';
 
 export function App() {
-  const [currentTab, setCurrentTab] = useState<'create' | 'history' | 'settings'>('create');
+  const [currentTab, setCurrentTab] = useState<'create' | 'history' | 'clients' | 'settings'>('create');
   const [editingInvoice, setEditingInvoice] = useState<InvoiceRecord | null>(null);
+  const [selectedClientForNewInvoice, setSelectedClientForNewInvoice] = useState<ClientRecord | null>(null);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
 
@@ -70,6 +72,7 @@ export function App() {
         onTabChange={(tab) => {
           if (tab === 'create' && currentTab !== 'create') {
             setEditingInvoice(null);
+            setSelectedClientForNewInvoice(null);
           }
           setCurrentTab(tab);
         }}
@@ -78,10 +81,12 @@ export function App() {
         {currentTab === 'create' && (
           <CreateInvoicePage
             initialInvoice={editingInvoice}
+            initialClient={selectedClientForNewInvoice}
             onSuccessToast={(msg) => addToast('success', msg)}
             onErrorToast={(msg) => addToast('error', msg)}
             onNavigateToHistory={() => {
               setEditingInvoice(null);
+              setSelectedClientForNewInvoice(null);
               setCurrentTab('history');
             }}
           />
@@ -93,6 +98,18 @@ export function App() {
             onErrorToast={(msg) => addToast('error', msg)}
             onEditInvoice={handleEditInvoice}
             onDuplicateInvoice={handleDuplicateInvoice}
+          />
+        )}
+
+        {currentTab === 'clients' && (
+          <ClientsPage
+            onSuccessToast={(msg) => addToast('success', msg)}
+            onErrorToast={(msg) => addToast('error', msg)}
+            onCreateInvoiceForClient={(client) => {
+              setEditingInvoice(null);
+              setSelectedClientForNewInvoice(client);
+              setCurrentTab('create');
+            }}
           />
         )}
 
