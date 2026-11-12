@@ -32,6 +32,7 @@ export interface CompanySettings {
   nextSequence: number; // e.g. 79
   updatedAt?: string;
   googleDriveClientId?: string; // Optional client-side OAuth Client ID override
+  appPin?: string; // 4-digit website PIN lock (default: '1234')
 }
 
 export interface InvoiceLineItem {

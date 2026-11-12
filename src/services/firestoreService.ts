@@ -42,7 +42,8 @@ export const DEFAULT_SETTINGS: CompanySettings = {
   qrScannerUrl: '/assets/qr_scanner.jpg',
   qrScannerDataUrl: '/assets/qr_scanner.jpg',
   invoicePrefix: 'MGS',
-  nextSequence: 79,
+  nextSequence: 1,
+  appPin: '1234',
 };
 
 // Document references
@@ -138,7 +139,7 @@ export async function saveCompanySettingsFirestore(
         await setDoc(NUMBERING_DOC_REF, sanitizeForFirestore({
           financialYear: curFY,
           nextSequence: updated.nextSequence,
-          usedNumbers: ['MGS/2026-27/078'],
+          usedNumbers: [],
           updatedAt: new Date().toISOString(),
         }));
       }
@@ -189,28 +190,6 @@ export async function getHighestSequenceForFinancialYear(
       }
     });
 
-    const metaSnap = await getDoc(NUMBERING_DOC_REF);
-    if (metaSnap.exists()) {
-      const meta = metaSnap.data() as NumberingMetadata;
-      if (Array.isArray(meta.usedNumbers)) {
-        meta.usedNumbers.forEach((n) => {
-          const trimmed = n.trim();
-          used.add(trimmed);
-          if (trimmed.includes(`/${fy}/`)) {
-            const seq = extractInvoiceSequenceNumber(trimmed);
-            if (seq > maxSeq) {
-              maxSeq = seq;
-            }
-          }
-        });
-      }
-      if (meta.financialYear === fy && typeof meta.nextSequence === 'number') {
-        if (meta.nextSequence - 1 > maxSeq) {
-          maxSeq = meta.nextSequence - 1;
-        }
-      }
-    }
-
     return { maxSeq, padLength: maxPad, usedNumbers: Array.from(used) };
   } catch (err) {
     console.warn('Error reading highest sequence for financial year:', err);
@@ -249,7 +228,7 @@ export async function previewNextInvoiceNumberFirestore(dateStr: string): Promis
 
   try {
     const { maxSeq, padLength, usedNumbers } = await getHighestSequenceForFinancialYear(fy);
-    let nextSeq = maxSeq > 0 ? maxSeq + 1 : (fy === '2026-27' ? 79 : 1);
+    let nextSeq = maxSeq > 0 ? maxSeq + 1 : 1;
     const targetPad = Math.max(2, padLength);
     let candidate = formatInvoiceNumber(prefix, fy, nextSeq, targetPad);
 
@@ -277,30 +256,41 @@ export async function reserveAndCommitInvoiceNumberFirestore(
   const prefix = settings.invoicePrefix || 'MGS';
   const fy = getIndianFinancialYear(dateStr);
 
+  const { maxSeq, padLength, usedNumbers } = await getHighestSequenceForFinancialYear(fy);
+  const targetPad = Math.max(2, padLength);
+
   return runTransaction(firestore, async (transaction) => {
     const snap = await transaction.get(NUMBERING_DOC_REF);
-    let nextSeq = fy === '2026-27' ? 79 : 1;
-    let used: string[] = ['MGS/2026-27/078'];
+    let nextSeq = maxSeq > 0 ? maxSeq + 1 : 1;
+    const used = new Set<string>(usedNumbers);
 
     if (snap.exists()) {
       const data = snap.data() as NumberingMetadata;
-      if (data.financialYear === fy && typeof data.nextSequence === 'number') {
-        nextSeq = data.nextSequence;
+      if (Array.isArray(data.usedNumbers)) {
+        data.usedNumbers.forEach((n) => {
+          if (n && n.trim()) used.add(n.trim());
+        });
       }
-      used = Array.isArray(data.usedNumbers) ? [...data.usedNumbers] : used;
+      // If numbering metadata smoothly continues from actual invoices, keep it,
+      // but do not allow large phantom jumps from legacy metadata.
+      if (data.financialYear === fy && typeof data.nextSequence === 'number') {
+        if (data.nextSequence >= nextSeq && data.nextSequence <= maxSeq + 5) {
+          nextSeq = data.nextSequence;
+        }
+      }
     }
 
     let finalNumber = manualInvoiceNo ? manualInvoiceNo.trim() : '';
     if (!finalNumber) {
-      let candidate = formatInvoiceNumber(prefix, fy, nextSeq, 2);
-      while (used.some((u) => u.toLowerCase() === candidate.toLowerCase())) {
+      let candidate = formatInvoiceNumber(prefix, fy, nextSeq, targetPad);
+      while (Array.from(used).some((u) => u.toLowerCase() === candidate.toLowerCase())) {
         nextSeq++;
-        candidate = formatInvoiceNumber(prefix, fy, nextSeq, 2);
+        candidate = formatInvoiceNumber(prefix, fy, nextSeq, targetPad);
       }
       finalNumber = candidate;
       nextSeq++;
     } else {
-      const isUsed = used.some((u) => u.toLowerCase() === finalNumber.toLowerCase());
+      const isUsed = Array.from(used).some((u) => u.toLowerCase() === finalNumber.toLowerCase());
       if (isUsed && !excludeId) {
         throw new Error(`This invoice number already exists.`);
       }
@@ -311,14 +301,12 @@ export async function reserveAndCommitInvoiceNumberFirestore(
       }
     }
 
-    if (!used.some((u) => u.toLowerCase() === finalNumber.toLowerCase())) {
-      used.push(finalNumber);
-    }
+    used.add(finalNumber);
 
     transaction.set(NUMBERING_DOC_REF, sanitizeForFirestore({
       financialYear: fy,
       nextSequence: nextSeq,
-      usedNumbers: used,
+      usedNumbers: Array.from(used),
       updatedAt: new Date().toISOString(),
     }));
 
@@ -436,8 +424,8 @@ export async function saveInvoiceFirestore(invoice: InvoiceRecord): Promise<Invo
       } else {
         await setDoc(NUMBERING_DOC_REF, sanitizeForFirestore({
           financialYear: fy,
-          nextSequence: 80,
-          usedNumbers: ['MGS/2026-27/078', sanitizedInvoice.invoiceNumber],
+          nextSequence: 1,
+          usedNumbers: [sanitizedInvoice.invoiceNumber],
           updatedAt: now,
         }));
       }
@@ -532,4 +520,32 @@ export async function deleteInvoiceFirestore(id: string): Promise<void> {
 
     await deleteDoc(invRef);
   }
+}
+
+/**
+ * 4. WEBSITE SECURITY & PIN AUTHENTICATION
+ */
+
+export async function getAppPinFirestore(): Promise<string> {
+  try {
+    const snap = await getDoc(SETTINGS_DOC_REF);
+    if (snap.exists()) {
+      const data = snap.data() as CompanySettings;
+      if (data.appPin && typeof data.appPin === 'string' && data.appPin.trim()) {
+        return data.appPin.trim();
+      }
+    }
+    return DEFAULT_SETTINGS.appPin || '1234';
+  } catch (err) {
+    console.warn('Could not read appPin from Firestore, using default:', err);
+    return DEFAULT_SETTINGS.appPin || '1234';
+  }
+}
+
+export async function updateAppPinFirestore(newPin: string): Promise<void> {
+  const trimmed = newPin.trim();
+  if (!/^\d{4}$/.test(trimmed)) {
+    throw new Error('PIN must be exactly 4 numeric digits.');
+  }
+  await saveCompanySettingsFirestore({ appPin: trimmed });
 }

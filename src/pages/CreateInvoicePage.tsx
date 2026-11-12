@@ -231,7 +231,7 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
       const prefix = settings.invoicePrefix || 'MGS';
       const parts = invoiceNumber.split('/');
       if (parts.length === 3) {
-        const seq = parseInt(parts[2], 10) || settings.nextSequence || 79;
+        const seq = parseInt(parts[2], 10) || settings.nextSequence || 1;
         setInvoiceNumber(formatInvoiceNumber(prefix, fy, seq));
       } else {
         const generated = await previewNextInvoiceNumberFirestore(newDate);

@@ -81,8 +81,8 @@ export async function runLocalToFirestoreMigration(force = false): Promise<Migra
     const numberingSnap = await getDoc(NUMBERING_DOC_REF);
     const curFY = getIndianFinancialYear(new Date());
 
-    const allUsedNumbers = new Set<string>(['MGS/2026-27/078']);
-    let highestSeq = 79;
+    const allUsedNumbers = new Set<string>();
+    let highestSeq = 1;
 
     // Collect from local sequences
     for (const seq of localSequences) {

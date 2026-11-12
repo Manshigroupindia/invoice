@@ -13,11 +13,14 @@ import {
   RefreshCw,
   HardDrive,
   CheckCircle2,
+  Lock,
+  KeyRound,
 } from 'lucide-react';
 import type { CompanySettings } from '../types';
 import {
   subscribeCompanySettings,
   saveCompanySettingsFirestore,
+  updateAppPinFirestore,
   DEFAULT_SETTINGS,
 } from '../services/firestoreService';
 import { uploadBrandAsset, validateImageUrl } from '../services/storageService';
@@ -58,6 +61,14 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
   const [driveConnected, setDriveConnected] = useState(false);
   const [driveEmail, setDriveEmail] = useState<string | undefined>();
   const [isConnectingDrive, setIsConnectingDrive] = useState(false);
+
+  // PIN Management state
+  const [currentPinInput, setCurrentPinInput] = useState('');
+  const [newPinInput, setNewPinInput] = useState('');
+  const [confirmPinInput, setConfirmPinInput] = useState('');
+  const [isUpdatingPin, setIsUpdatingPin] = useState(false);
+  const [pinError, setPinError] = useState<string | null>(null);
+  const [pinSuccess, setPinSuccess] = useState<string | null>(null);
 
   useEffect(() => {
     // Real-time synchronization with Firestore companySettings/main
@@ -229,6 +240,45 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
       onErrorToast(`Migration error: ${msg}`);
     } finally {
       setIsMigrating(false);
+    }
+  };
+
+  const handleUpdatePin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPinError(null);
+    setPinSuccess(null);
+
+    const activePin = settings.appPin || '1234';
+    if (currentPinInput.trim() !== activePin) {
+      setPinError('Current PIN is incorrect.');
+      return;
+    }
+
+    const cleanNewPin = newPinInput.trim();
+    if (!/^\d{4}$/.test(cleanNewPin)) {
+      setPinError('New PIN must be exactly 4 numeric digits.');
+      return;
+    }
+
+    if (cleanNewPin !== confirmPinInput.trim()) {
+      setPinError('New PIN and Confirm PIN do not match.');
+      return;
+    }
+
+    try {
+      setIsUpdatingPin(true);
+      await updateAppPinFirestore(cleanNewPin);
+      setPinSuccess('PIN updated successfully! Your new 4-digit PIN is active.');
+      onSuccessToast('Website PIN updated successfully.');
+      setCurrentPinInput('');
+      setNewPinInput('');
+      setConfirmPinInput('');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to update PIN.';
+      setPinError(msg);
+      onErrorToast(msg);
+    } finally {
+      setIsUpdatingPin(false);
     }
   };
 
@@ -673,7 +723,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                   onChange={(e) => handleInputChange('nextSequence', parseInt(e.target.value, 10) || 1)}
                 />
                 <div className="form-hint">
-                  Next generated invoice: <strong>{settings.invoicePrefix || 'MGS'}/2026-27/{String(settings.nextSequence || 79).padStart(3, '0')}</strong>
+                  Next generated invoice: <strong>{settings.invoicePrefix || 'MGS'}/2026-27/{String(settings.nextSequence || 1).padStart(2, '0')}</strong>
                 </div>
               </div>
             </div>
@@ -745,7 +795,147 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
             </div>
           </div>
 
-          {/* 6. Cloud Migration Sync Card */}
+          {/* 6. Website Security & PIN Lock */}
+          <div className="ui-card">
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', borderBottom: '1px solid #f1f5f9', paddingBottom: '12px', flexWrap: 'wrap', gap: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <Lock size={20} color="#1e3a8a" />
+                <div>
+                  <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a' }}>Website Security & PIN Lock</h3>
+                  <div style={{ fontSize: '12.5px', color: '#64748b' }}>
+                    4-digit security PIN required to access the Invoice Portal. Stored in Cloud Firestore and verified each session.
+                  </div>
+                </div>
+              </div>
+              <div style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '4px 10px',
+                borderRadius: '20px',
+                fontSize: '12px',
+                fontWeight: 600,
+                background: '#eff6ff',
+                color: '#1d4ed8',
+                border: '1px solid #bfdbfe',
+              }}>
+                <KeyRound size={13} color="#2563eb" />
+                <span>PIN Protected (Active)</span>
+              </div>
+            </div>
+
+            <div style={{
+              background: '#f8fafc',
+              border: '1px solid #e2e8f0',
+              borderRadius: '12px',
+              padding: '20px',
+              maxWidth: '560px',
+            }}>
+              <div style={{ fontSize: '14px', fontWeight: 600, color: '#0f172a', marginBottom: '14px' }}>
+                Change 4-Digit Security PIN
+              </div>
+
+              {pinError && (
+                <div style={{
+                  background: '#fef2f2',
+                  border: '1px solid #fecaca',
+                  color: '#dc2626',
+                  borderRadius: '8px',
+                  padding: '10px 14px',
+                  fontSize: '13px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  marginBottom: '16px',
+                }}>
+                  <AlertCircle size={16} />
+                  <span>{pinError}</span>
+                </div>
+              )}
+
+              {pinSuccess && (
+                <div style={{
+                  background: '#f0fdf4',
+                  border: '1px solid #bbf7d0',
+                  color: '#16a34a',
+                  borderRadius: '8px',
+                  padding: '10px 14px',
+                  fontSize: '13px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  marginBottom: '16px',
+                }}>
+                  <CheckCircle2 size={16} />
+                  <span>{pinSuccess}</span>
+                </div>
+              )}
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '14px', marginBottom: '16px' }}>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label" style={{ fontSize: '12.5px' }}>Current PIN</label>
+                  <input
+                    type="password"
+                    maxLength={4}
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    placeholder="••••"
+                    className="form-input"
+                    style={{ letterSpacing: '4px', textAlign: 'center', fontSize: '16px' }}
+                    value={currentPinInput}
+                    onChange={(e) => setCurrentPinInput(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                  />
+                </div>
+
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label" style={{ fontSize: '12.5px' }}>New 4-Digit PIN</label>
+                  <input
+                    type="password"
+                    maxLength={4}
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    placeholder="••••"
+                    className="form-input"
+                    style={{ letterSpacing: '4px', textAlign: 'center', fontSize: '16px' }}
+                    value={newPinInput}
+                    onChange={(e) => setNewPinInput(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                  />
+                </div>
+
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label" style={{ fontSize: '12.5px' }}>Confirm New PIN</label>
+                  <input
+                    type="password"
+                    maxLength={4}
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    placeholder="••••"
+                    className="form-input"
+                    style={{ letterSpacing: '4px', textAlign: 'center', fontSize: '16px' }}
+                    value={confirmPinInput}
+                    onChange={(e) => setConfirmPinInput(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
+                <span style={{ fontSize: '12px', color: '#64748b' }}>
+                  Default PIN is <strong>1234</strong>. PIN must be 4 digits.
+                </span>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  style={{ padding: '8px 16px', fontSize: '13px' }}
+                  disabled={isUpdatingPin || newPinInput.length !== 4 || confirmPinInput.length !== 4 || !currentPinInput}
+                  onClick={handleUpdatePin}
+                >
+                  {isUpdatingPin ? 'Updating PIN...' : 'Update Security PIN'}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* 7. Cloud Migration Sync Card */}
           <div className="ui-card" style={{ borderLeft: '4px solid #2563eb' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
               <div>

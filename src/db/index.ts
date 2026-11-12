@@ -49,11 +49,11 @@ export async function initializeDatabase(): Promise<CompanySettings> {
     const defaultData = { ...DEFAULT_SETTINGS };
     await db.settings.add(defaultData);
     
-    // Initialize 2026-27 sequence starting at 79, with 78 registered as previous
+    // Initialize sequence
     await db.sequences.put({
       financialYear: '2026-27',
-      nextSequence: 79,
-      usedNumbers: ['MGS/2026-27/078'],
+      nextSequence: 1,
+      usedNumbers: [],
     });
     
     return defaultData;

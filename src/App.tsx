@@ -7,15 +7,32 @@ import { CreateInvoicePage } from './pages/CreateInvoicePage';
 import { InvoiceHistoryPage } from './pages/InvoiceHistoryPage';
 import { ClientsPage } from './pages/ClientsPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { PinLockScreen } from './components/auth/PinLockScreen';
 import { ToastContainer } from './components/common/Feedback';
 import { BackupModal } from './components/common/BackupModal';
 
 export function App() {
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return sessionStorage.getItem('mgs_portal_authenticated') === 'true';
+  });
   const [currentTab, setCurrentTab] = useState<'create' | 'history' | 'clients' | 'settings'>('create');
   const [editingInvoice, setEditingInvoice] = useState<InvoiceRecord | null>(null);
   const [selectedClientForNewInvoice, setSelectedClientForNewInvoice] = useState<ClientRecord | null>(null);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
+
+  const addToast = (type: 'success' | 'error' | 'info' | 'warning', message: string, title?: string) => {
+    const id = `toast-${Date.now()}-${Math.random()}`;
+    setToasts((prev) => [...prev, { id, type, message, title }]);
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, 4500);
+  };
+
+  const handleDismissToast = (id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  };
 
   useEffect(() => {
     async function init() {
@@ -31,18 +48,6 @@ export function App() {
     }
     init();
   }, []);
-
-  const addToast = (type: 'success' | 'error' | 'info' | 'warning', message: string, title?: string) => {
-    const id = `toast-${Date.now()}-${Math.random()}`;
-    setToasts((prev) => [...prev, { id, type, message, title }]);
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 4500);
-  };
-
-  const handleDismissToast = (id: string) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
-  };
 
   const handleEditInvoice = (invoice: InvoiceRecord) => {
     setEditingInvoice(invoice);
@@ -64,6 +69,10 @@ export function App() {
     addToast('info', `Duplicating invoice for ${invoice.customerName}. Assigning next available invoice number.`);
   };
 
+
+  if (!isAuthenticated) {
+    return <PinLockScreen onUnlock={() => setIsAuthenticated(true)} />;
+  }
 
   return (
     <>
