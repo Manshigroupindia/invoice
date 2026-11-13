@@ -1,14 +1,18 @@
-import React, { useState, useEffect } from 'react';
-import { X, Building2, Save, Loader2, AlertCircle } from 'lucide-react';
-import type { ClientRecord } from '../../types';
-import { isDuplicateClient } from '../../services/clientService';
+import React, { useState, useEffect, useMemo } from 'react';
+import { X, Building2, Save, Loader2, AlertCircle, FileText } from 'lucide-react';
+import type { ClientRecord, InvoiceRecord } from '../../types';
+import { isDuplicateClient, getClientLinkedInvoices } from '../../services/clientService';
 
 interface ClientModalProps {
   isOpen: boolean;
   onClose: () => void;
   client?: ClientRecord | null;
   existingClients: ClientRecord[];
-  onSave: (clientData: Partial<ClientRecord> & { companyName: string; address: string }) => Promise<void>;
+  invoices?: InvoiceRecord[];
+  onSave: (
+    clientData: Partial<ClientRecord> & { companyName: string; address: string },
+    forceSyncOverridden?: boolean
+  ) => Promise<void>;
   isLoading?: boolean;
 }
 
@@ -17,6 +21,7 @@ export const ClientModal: React.FC<ClientModalProps> = ({
   onClose,
   client,
   existingClients,
+  invoices = [],
   onSave,
   isLoading = false,
 }) => {
@@ -25,6 +30,13 @@ export const ClientModal: React.FC<ClientModalProps> = ({
   const [mobile, setMobile] = useState('');
   const [gstin, setGstin] = useState('');
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
+  const [forceSyncOverridden, setForceSyncOverridden] = useState(false);
+
+  // Compute linked invoices and overridden count for this client
+  const { linked, overridden, taxCount, normalCount } = useMemo(() => {
+    if (!client) return { linked: [], overridden: [], taxCount: 0, normalCount: 0 };
+    return getClientLinkedInvoices(client, invoices);
+  }, [client, invoices]);
 
   useEffect(() => {
     if (isOpen) {
@@ -40,6 +52,7 @@ export const ClientModal: React.FC<ClientModalProps> = ({
         setGstin('');
       }
       setDuplicateWarning(null);
+      setForceSyncOverridden(false);
     }
   }, [isOpen, client]);
 
@@ -71,13 +84,16 @@ export const ClientModal: React.FC<ClientModalProps> = ({
     e.preventDefault();
     if (!companyName.trim() || !address.trim() || isLoading) return;
 
-    await onSave({
-      ...(client ? { id: client.id, createdAt: client.createdAt } : {}),
-      companyName: companyName.trim(),
-      address: address.trim(),
-      mobile: mobile.trim(),
-      gstin: gstin.trim().toUpperCase(),
-    });
+    await onSave(
+      {
+        ...(client ? { id: client.id, createdAt: client.createdAt } : {}),
+        companyName: companyName.trim(),
+        address: address.trim(),
+        mobile: mobile.trim(),
+        gstin: gstin.trim().toUpperCase(),
+      },
+      forceSyncOverridden
+    );
   };
 
   return (
@@ -157,6 +173,77 @@ export const ClientModal: React.FC<ClientModalProps> = ({
               >
                 <AlertCircle size={16} style={{ flexShrink: 0 }} />
                 <span>{duplicateWarning}</span>
+              </div>
+            )}
+
+            {client && linked.length > 0 && (
+              <div
+                style={{
+                  background: '#f0f9ff',
+                  border: '1px solid #bae6fd',
+                  borderRadius: '8px',
+                  padding: '12px 14px',
+                  fontSize: '12.5px',
+                  color: '#0369a1',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '6px',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 600 }}>
+                  <FileText size={16} style={{ color: '#0284c7', flexShrink: 0 }} />
+                  <span>
+                    Linked to {linked.length} existing invoice{linked.length > 1 ? 's' : ''} (
+                    {[
+                      taxCount > 0 ? `${taxCount} Tax` : null,
+                      normalCount > 0 ? `${normalCount} Normal` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(', ')}
+                    )
+                  </span>
+                </div>
+                <div style={{ fontSize: '11.5px', color: '#0284c7', lineHeight: 1.4 }}>
+                  Updating this client will automatically sync Name, Address, Mobile, and GSTIN across all linked invoices in Firestore and newly generated PDFs.
+                </div>
+
+                {overridden.length > 0 && (
+                  <div
+                    style={{
+                      marginTop: '6px',
+                      padding: '10px 12px',
+                      background: '#fffbeb',
+                      border: '1px solid #fde68a',
+                      borderRadius: '6px',
+                      color: '#92400e',
+                    }}
+                  >
+                    <div style={{ fontWeight: 600, fontSize: '12px', marginBottom: '4px' }}>
+                      ⚠️ {overridden.length} invoice{overridden.length > 1 ? 's have' : ' has'} manually customized details
+                    </div>
+                    <label
+                      style={{
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        gap: '8px',
+                        cursor: 'pointer',
+                        fontSize: '12px',
+                        userSelect: 'none',
+                        lineHeight: 1.35,
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={forceSyncOverridden}
+                        onChange={(e) => setForceSyncOverridden(e.target.checked)}
+                        style={{ marginTop: '2px', cursor: 'pointer' }}
+                      />
+                      <span>
+                        Also overwrite and update the {overridden.length} customized invoice{overridden.length > 1 ? 's' : ''}. (Unchecked preserves individual custom details).
+                      </span>
+                    </label>
+                  </div>
+                )}
               </div>
             )}
 

@@ -97,6 +97,16 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
   const [customerGstin, setCustomerGstin] = useState('');
   const [items, setItems] = useState<InvoiceLineItem[]>(SAMPLE_REFERENCE_ITEMS);
 
+  // Client selection & customer details override tracking
+  const [selectedClientId, setSelectedClientId] = useState<string | undefined>(undefined);
+  const [isCustomerOverridden, setIsCustomerOverridden] = useState<boolean>(false);
+  const [selectedClientOriginal, setSelectedClientOriginal] = useState<{
+    companyName: string;
+    address: string;
+    mobile: string;
+    gstin: string;
+  } | null>(null);
+
   // Clients & All Invoices state for autocomplete & duplicate detection
   const [clients, setClients] = useState<ClientRecord[]>([]);
   const [allInvoices, setAllInvoices] = useState<InvoiceRecord[]>([]);
@@ -155,12 +165,35 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
   // If initialClient is passed and not editing existing invoice, load client details
   useEffect(() => {
     if (initialClient && !initialInvoice) {
+      setSelectedClientId(initialClient.id);
+      setSelectedClientOriginal({
+        companyName: initialClient.companyName || '',
+        address: initialClient.address || '',
+        mobile: initialClient.mobile || '',
+        gstin: initialClient.gstin || '',
+      });
+      setIsCustomerOverridden(false);
       setCustomerName(initialClient.companyName || '');
       setCustomerAddress(initialClient.address || '');
       setCustomerMobile(initialClient.mobile || '');
       setCustomerGstin(initialClient.gstin || '');
     }
   }, [initialClient, initialInvoice]);
+
+  // Sync selectedClientOriginal from clients list if selectedClientId is set
+  useEffect(() => {
+    if (selectedClientId && !selectedClientOriginal && clients.length > 0) {
+      const match = clients.find((c) => c.id === selectedClientId);
+      if (match) {
+        setSelectedClientOriginal({
+          companyName: match.companyName || '',
+          address: match.address || '',
+          mobile: match.mobile || '',
+          gstin: match.gstin || '',
+        });
+      }
+    }
+  }, [selectedClientId, selectedClientOriginal, clients]);
 
   // Duplicate invoice number validation (independent for Tax and Normal invoices)
   useEffect(() => {
@@ -187,6 +220,8 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
       if (initialInvoice) {
         setIsEditingExisting(true);
         setExistingInvoiceId(initialInvoice.id);
+        setSelectedClientId(initialInvoice.clientId);
+        setIsCustomerOverridden(initialInvoice.isCustomerOverridden || false);
         setInvoiceType(initialInvoice.invoiceType || 'regular');
         setTaxMode(initialInvoice.taxMode || 'cgst_sgst');
         setCgstRate(initialInvoice.cgstRate !== undefined ? initialInvoice.cgstRate : 0);
@@ -205,6 +240,9 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
       } else {
         setIsEditingExisting(false);
         setExistingInvoiceId(null);
+        setSelectedClientId(undefined);
+        setSelectedClientOriginal(null);
+        setIsCustomerOverridden(false);
         setInvoiceType('regular');
         setTaxMode('cgst_sgst');
         setCgstRate(0);
@@ -361,11 +399,30 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
 
   const subtotal = totals.subtotal;
 
+  // Helper to check whether customer fields differ from original selected client
+  const checkCustomerOverridden = (
+    name: string,
+    addr: string,
+    mob: string,
+    gst: string,
+    orig: typeof selectedClientOriginal
+  ) => {
+    if (!orig) return false;
+    return (
+      name.trim() !== orig.companyName.trim() ||
+      addr.trim() !== orig.address.trim() ||
+      mob.trim() !== orig.mobile.trim() ||
+      gst.trim().toUpperCase() !== orig.gstin.trim().toUpperCase()
+    );
+  };
+
   // Construct current invoice object for preview & saving
   const currentInvoiceData: InvoiceRecord = {
     id: existingInvoiceId || `inv-${Date.now()}`,
     invoiceNumber: invoiceNumber.trim() || 'MGS/2026-27/079',
     date: invoiceDate,
+    clientId: selectedClientId,
+    isCustomerOverridden,
     customerName: customerName.trim(),
     customerAddress: customerAddress.trim(),
     customerMobile: customerMobile.trim(),
@@ -399,11 +456,29 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
 
   // Client selection helper
   const handleSelectClient = (c: ClientRecord) => {
+    setSelectedClientId(c.id);
+    setSelectedClientOriginal({
+      companyName: c.companyName || '',
+      address: c.address || '',
+      mobile: c.mobile || '',
+      gstin: c.gstin || '',
+    });
+    setIsCustomerOverridden(false);
     setCustomerName(c.companyName || '');
     setCustomerAddress(c.address || '');
     setCustomerMobile(c.mobile || '');
     setCustomerGstin(c.gstin || '');
     onSuccessToast(`Loaded customer details for ${c.companyName}.`);
+  };
+
+  const handleResetToSelectedClient = () => {
+    if (!selectedClientOriginal) return;
+    setCustomerName(selectedClientOriginal.companyName);
+    setCustomerAddress(selectedClientOriginal.address);
+    setCustomerMobile(selectedClientOriginal.mobile);
+    setCustomerGstin(selectedClientOriginal.gstin);
+    setIsCustomerOverridden(false);
+    onSuccessToast('Reset customer details to saved client record.');
   };
 
   // Core Save Method: Saves or updates invoice in Firestore & IndexedDB
@@ -440,6 +515,10 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
 
     const saved = await saveInvoiceFirestore(invoiceToSave);
     saveLocalInvoice(saved).catch((err) => console.warn('Local backup failed:', err));
+
+    if (saved.clientId && !selectedClientId) {
+      setSelectedClientId(saved.clientId);
+    }
 
     // Prevent duplicate records on subsequent actions
     setIsEditingExisting(true);
@@ -541,6 +620,9 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
 
   const handleResetForm = () => {
     setShowResetConfirm(false);
+    setSelectedClientId(undefined);
+    setSelectedClientOriginal(null);
+    setIsCustomerOverridden(false);
     setCustomerName('');
     setCustomerAddress('');
     setCustomerMobile('');
@@ -765,11 +847,17 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
                 </label>
                 <select
                   className="form-input"
-                  value=""
+                  value={selectedClientId || ''}
                   onChange={(e) => {
                     const cid = e.target.value;
-                    const c = clients.find((item) => item.id === cid);
-                    if (c) handleSelectClient(c);
+                    if (!cid) {
+                      setSelectedClientId(undefined);
+                      setSelectedClientOriginal(null);
+                      setIsCustomerOverridden(false);
+                    } else {
+                      const c = clients.find((item) => item.id === cid);
+                      if (c) handleSelectClient(c);
+                    }
                   }}
                   style={{ fontSize: '13px', background: '#ffffff' }}
                 >
@@ -780,6 +868,40 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
                     </option>
                   ))}
                 </select>
+                {selectedClientId && isCustomerOverridden && (
+                  <div
+                    style={{
+                      marginTop: '8px',
+                      padding: '6px 10px',
+                      background: '#fffbeb',
+                      border: '1px solid #fef3c7',
+                      borderRadius: '6px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      fontSize: '11.5px',
+                      color: '#92400e',
+                    }}
+                  >
+                    <span>⚠️ Customer details customized for this invoice</span>
+                    <button
+                      type="button"
+                      onClick={handleResetToSelectedClient}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#2563eb',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        textDecoration: 'underline',
+                        fontSize: '11.5px',
+                        padding: 0,
+                      }}
+                    >
+                      Reset to client record
+                    </button>
+                  </div>
+                )}
                 <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>
                   Selecting a client populates Name, Address, Mobile, and GSTIN. You can edit them freely for this invoice.
                 </div>
@@ -793,7 +915,15 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
                 className="form-input"
                 placeholder="e.g. M/s. Brushspace"
                 value={customerName}
-                onChange={(e) => setCustomerName(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setCustomerName(val);
+                  if (selectedClientOriginal) {
+                    setIsCustomerOverridden(
+                      checkCustomerOverridden(val, customerAddress, customerMobile, customerGstin, selectedClientOriginal)
+                    );
+                  }
+                }}
                 required
               />
             </div>
@@ -805,7 +935,15 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
                 rows={3}
                 placeholder="Address Line 1&#10;Sector, Area, City - PIN"
                 value={customerAddress}
-                onChange={(e) => setCustomerAddress(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setCustomerAddress(val);
+                  if (selectedClientOriginal) {
+                    setIsCustomerOverridden(
+                      checkCustomerOverridden(customerName, val, customerMobile, customerGstin, selectedClientOriginal)
+                    );
+                  }
+                }}
                 required
               />
             </div>
@@ -817,7 +955,15 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
                 className="form-input"
                 placeholder="e.g. +91 88604 30075"
                 value={customerMobile}
-                onChange={(e) => setCustomerMobile(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setCustomerMobile(val);
+                  if (selectedClientOriginal) {
+                    setIsCustomerOverridden(
+                      checkCustomerOverridden(customerName, customerAddress, val, customerGstin, selectedClientOriginal)
+                    );
+                  }
+                }}
               />
             </div>
 
@@ -829,7 +975,15 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
                   className="form-input"
                   placeholder="e.g. 09ARJPY9074A1Z9"
                   value={customerGstin}
-                  onChange={(e) => setCustomerGstin(e.target.value.toUpperCase())}
+                  onChange={(e) => {
+                    const val = e.target.value.toUpperCase();
+                    setCustomerGstin(val);
+                    if (selectedClientOriginal) {
+                      setIsCustomerOverridden(
+                        checkCustomerOverridden(customerName, customerAddress, customerMobile, val, selectedClientOriginal)
+                      );
+                    }
+                  }}
                   maxLength={15}
                 />
               </div>

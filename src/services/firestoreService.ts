@@ -487,6 +487,8 @@ export function prepareInvoiceForFirestore(invoice: InvoiceRecord): InvoiceRecor
 
   const prepared: InvoiceRecord = {
     ...invoice,
+    clientId: invoice.clientId ? invoice.clientId.trim() : undefined,
+    isCustomerOverridden: invoice.isCustomerOverridden === true,
     invoiceType: isTax ? 'tax' : 'regular',
     taxMode: invoice.taxMode || 'cgst_sgst',
     customerName: (invoice.customerName || '').trim(),
@@ -512,7 +514,7 @@ export async function saveInvoiceFirestore(invoice: InvoiceRecord): Promise<Invo
   const invRef = doc(firestore, 'invoices', invoice.id);
   const snap = await getDoc(invRef);
 
-  const sanitizedInvoice = prepareInvoiceForFirestore(invoice);
+  let sanitizedInvoice = prepareInvoiceForFirestore(invoice);
 
   // Validate duplicate invoice number before saving
   const isDuplicate = await checkInvoiceNumberExistsFirestore(
@@ -524,10 +526,18 @@ export async function saveInvoiceFirestore(invoice: InvoiceRecord): Promise<Invo
     throw new Error(`This invoice number already exists for ${sanitizedInvoice.invoiceType === 'tax' ? 'Tax' : 'Normal'} Invoices.`);
   }
 
-  // Auto-make customer available in Clients collection
-  autoUpsertClientFromInvoice(sanitizedInvoice).catch((err) => {
+  // Ensure customer is saved/updated in Clients collection and attach permanent clientId if missing
+  try {
+    const autoClient = await autoUpsertClientFromInvoice(sanitizedInvoice);
+    if (!sanitizedInvoice.clientId && autoClient?.id) {
+      sanitizedInvoice = {
+        ...sanitizedInvoice,
+        clientId: autoClient.id,
+      };
+    }
+  } catch (err) {
     console.warn('Auto client sync error:', err);
-  });
+  }
 
   if (!snap.exists()) {
     // New invoice: ensure invoiceNumber is in usedNumbers

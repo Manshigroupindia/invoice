@@ -57,6 +57,8 @@ export interface InvoiceRecord {
   id: string;
   invoiceNumber: string;
   date: string; // YYYY-MM-DD
+  clientId?: string; // Permanent link to ClientRecord in Firestore
+  isCustomerOverridden?: boolean; // True if customer details were manually customized on this invoice
   customerName: string;
   customerAddress: string;
   customerMobile?: string;

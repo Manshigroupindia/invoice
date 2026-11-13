@@ -12,11 +12,12 @@ import {
 import type { ClientRecord, InvoiceRecord } from '../types';
 import {
   subscribeClients,
-  saveClientFirestore,
   deleteClientFirestore,
   syncClientsFromInvoices,
+  updateClientAndSyncInvoices,
+  getClientLinkedInvoices,
 } from '../services/clientService';
-import { getAllInvoicesFirestore } from '../services/firestoreService';
+import { getAllInvoicesFirestore, subscribeInvoices } from '../services/firestoreService';
 import { ClientModal } from '../components/clients/ClientModal';
 import { ConfirmModal } from '../components/common/Feedback';
 
@@ -76,25 +77,30 @@ export const ClientsPage: React.FC<ClientsPageProps> = ({
       }
     );
 
-    // Also fetch invoices for invoice count badges
-    getAllInvoicesFirestore()
-      .then(setInvoices)
-      .catch((e) => console.warn('Could not fetch invoices for clients page:', e));
+    // 2. Real-time subscription to invoices for invoice counts and syncing
+    const unsubInvoices = subscribeInvoices(
+      (cloudInvoices) => {
+        setInvoices(cloudInvoices);
+      },
+      (err) => console.warn('Could not subscribe to invoices for clients page:', err)
+    );
 
-    return () => unsub();
+    return () => {
+      unsub();
+      unsubInvoices();
+    };
   }, []);
 
-  // Compute how many invoices each client has
+  // Compute how many invoices each client has using permanent clientId with fallback matching
   const clientInvoiceCounts = useMemo(() => {
     const map = new Map<string, number>();
-    for (const inv of invoices) {
-      const name = (inv.customerName || '').trim().toLowerCase();
-      if (name) {
-        map.set(name, (map.get(name) || 0) + 1);
-      }
+    for (const c of clients) {
+      const { linked } = getClientLinkedInvoices(c, invoices);
+      map.set(c.id, linked.length);
+      map.set(c.companyName.toLowerCase().trim(), linked.length);
     }
     return map;
-  }, [invoices]);
+  }, [clients, invoices]);
 
   const handleManualSync = async () => {
     try {
@@ -116,12 +122,20 @@ export const ClientsPage: React.FC<ClientsPageProps> = ({
   };
 
   const handleSaveClient = async (
-    clientData: Partial<ClientRecord> & { companyName: string; address: string }
+    clientData: Partial<ClientRecord> & { companyName: string; address: string },
+    forceSyncOverridden: boolean = false
   ) => {
     try {
       setIsSavingClient(true);
-      const saved = await saveClientFirestore(clientData);
-      onSuccessToast(`Client "${saved.companyName}" saved successfully.`);
+      const result = await updateClientAndSyncInvoices(clientData, forceSyncOverridden);
+      let msg = `Client "${result.client.companyName}" saved.`;
+      if (result.updatedInvoicesCount > 0) {
+        msg = `Updated "${result.client.companyName}" and synchronized ${result.updatedInvoicesCount} linked invoice(s).`;
+      }
+      if (result.skippedOverriddenCount > 0) {
+        msg += ` (${result.skippedOverriddenCount} customized override(s) preserved)`;
+      }
+      onSuccessToast(msg);
       setIsModalOpen(false);
       setSelectedClient(null);
     } catch (err: unknown) {
@@ -524,6 +538,7 @@ export const ClientsPage: React.FC<ClientsPageProps> = ({
         }}
         client={selectedClient}
         existingClients={clients}
+        invoices={invoices}
         onSave={handleSaveClient}
         isLoading={isSavingClient}
       />
