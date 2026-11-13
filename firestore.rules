@@ -56,7 +56,7 @@ service cloud.firestore {
     }
 
     // 3. Invoice Numbering Metadata: manages sequence and used numbers
-    match /invoiceMetadata/numbering {
+    match /invoiceMetadata/{docId} {
       allow read: if true;
       allow write: if (isAuthenticated() || request.time < timestamp.date(2026, 12, 31)) && isValidNumbering(request.resource.data);
     }

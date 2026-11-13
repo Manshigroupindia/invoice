@@ -38,10 +38,10 @@ export async function downloadMonthlyExcelReport(
     if (!inMonth) return false;
 
     if (invoiceTypeFilter === 'regular') {
-      return inv.invoiceType === 'regular' || !inv.invoiceType;
+      return inv.invoiceType === 'regular' || (!inv.invoiceType && !inv.totalTax && !inv.cgstRate && !inv.sgstRate && !inv.igstRate);
     }
     if (invoiceTypeFilter === 'tax') {
-      return inv.invoiceType === 'tax';
+      return inv.invoiceType === 'tax' || (!inv.invoiceType && !!(inv.totalTax || inv.cgstRate || inv.sgstRate || inv.igstRate));
     }
     return true; // 'all'
   });

@@ -18,12 +18,13 @@ import {
   FileSpreadsheet,
   Layers,
 } from 'lucide-react';
-import type { InvoiceRecord, CompanySettings } from '../types';
+import type { InvoiceRecord, CompanySettings, InvoiceType } from '../types';
 import {
   subscribeInvoices,
   deleteInvoiceFirestore,
   getCompanySettingsFirestore,
   subscribeCompanySettings,
+  isInvoiceOfType,
 } from '../services/firestoreService';
 import {
   uploadInvoicePdfToDrive,
@@ -62,6 +63,9 @@ export const InvoiceHistoryPage: React.FC<InvoiceHistoryPageProps> = ({
   const [previewInvoice, setPreviewInvoice] = useState<InvoiceRecord | null>(null);
   const [invoiceToDelete, setInvoiceToDelete] = useState<InvoiceRecord | null>(null);
   const [invoiceToEditConfirm, setInvoiceToEditConfirm] = useState<InvoiceRecord | null>(null);
+
+  // Invoice Type Selection: null initially displays "Which invoices would you like to view?"
+  const [selectedInvoiceType, setSelectedInvoiceType] = useState<InvoiceType | null>(null);
 
   // Month Selection Screen state: null initially displays the month selection screen
   const [selectedMonth, setSelectedMonth] = useState<number | 'all' | null>(null);
@@ -195,11 +199,22 @@ export const InvoiceHistoryPage: React.FC<InvoiceHistoryPageProps> = ({
     onEditInvoice(inv);
   };
 
+  // Counts for top-level selection screen
+  const normalInvoicesCount = useMemo(() => {
+    return invoices.filter((inv) => isInvoiceOfType(inv, 'regular')).length;
+  }, [invoices]);
+
+  const taxInvoicesCount = useMemo(() => {
+    return invoices.filter((inv) => isInvoiceOfType(inv, 'tax')).length;
+  }, [invoices]);
+
   // Month-wise count computation for month buttons
   const monthCounts = useMemo(() => {
     const counts = new Array(12).fill(0);
     for (const inv of invoices) {
       if (!inv.date) continue;
+      if (selectedInvoiceType && !isInvoiceOfType(inv, selectedInvoiceType)) continue;
+
       const d = new Date(inv.date);
       const invMonth = !isNaN(d.getTime())
         ? d.getMonth()
@@ -215,20 +230,28 @@ export const InvoiceHistoryPage: React.FC<InvoiceHistoryPageProps> = ({
       }
     }
     return counts;
-  }, [invoices, selectedYear]);
+  }, [invoices, selectedYear, selectedInvoiceType]);
 
   const allInvoicesCountForYear = useMemo(() => {
-    if (selectedYear === 'all') return invoices.length;
-    return invoices.filter((inv) => {
+    const list = selectedInvoiceType
+      ? invoices.filter((inv) => isInvoiceOfType(inv, selectedInvoiceType))
+      : invoices;
+    if (selectedYear === 'all') return list.length;
+    return list.filter((inv) => {
       const d = new Date(inv.date);
       const y = !isNaN(d.getTime()) ? d.getFullYear() : parseInt(inv.date.split('-')[0], 10);
       return y === selectedYear;
     }).length;
-  }, [invoices, selectedYear]);
+  }, [invoices, selectedYear, selectedInvoiceType]);
 
-  // Requirement 3 & 5: Filter and sort invoices
+  // Filter and sort invoices
   const monthFilteredInvoices = useMemo(() => {
     let list = invoices;
+
+    // Filter by selected invoice type (Tax vs Normal)
+    if (selectedInvoiceType) {
+      list = list.filter((inv) => isInvoiceOfType(inv, selectedInvoiceType));
+    }
 
     // Filter by selected month using invoice date (not creation date)
     if (selectedMonth !== null && selectedMonth !== 'all') {
@@ -272,7 +295,7 @@ export const InvoiceHistoryPage: React.FC<InvoiceHistoryPageProps> = ({
 
     // Requirement 3 & 5: Sort invoices according to the invoice number sequence within the selected month (ascending numerical order)
     return [...list].sort(compareInvoiceNumbersAsc);
-  }, [invoices, selectedMonth, selectedYear, searchQuery]);
+  }, [invoices, selectedInvoiceType, selectedMonth, selectedYear, searchQuery]);
 
   const totalBilled = monthFilteredInvoices.reduce(
     (sum, inv) => sum + (inv.grandTotal || inv.subtotal || 0),
@@ -281,15 +304,282 @@ export const InvoiceHistoryPage: React.FC<InvoiceHistoryPageProps> = ({
 
   return (
     <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
-      {/* Requirement 3: When the user opens Invoice History, first display a month selection screen */}
-      {selectedMonth === null ? (
+      {/* 1. Invoice Type Selection Screen */}
+      {selectedInvoiceType === null ? (
+        <div style={{ maxWidth: '820px', margin: '40px auto 0 auto', padding: '0 16px' }}>
+          <div style={{ textAlign: 'center', marginBottom: '36px' }}>
+            <div style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '56px',
+              height: '56px',
+              borderRadius: '16px',
+              background: '#eff6ff',
+              color: '#1d4ed8',
+              marginBottom: '16px',
+              border: '1px solid #bfdbfe',
+            }}>
+              <Layers size={28} />
+            </div>
+            <h2 style={{ fontSize: '26px', fontWeight: 800, color: '#0f172a', margin: '0 0 8px 0', letterSpacing: '-0.3px' }}>
+              Which invoices would you like to view?
+            </h2>
+            <p style={{ fontSize: '14.5px', color: '#64748b', margin: 0 }}>
+              Select the invoice category to browse its monthly records, search entries, or download PDFs.
+            </p>
+          </div>
+
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+            gap: '24px',
+          }}>
+            {/* Button 1: Normal Invoice */}
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={() => {
+                setSelectedInvoiceType('regular');
+                setSelectedMonth(null);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  setSelectedInvoiceType('regular');
+                  setSelectedMonth(null);
+                }
+              }}
+              style={{
+                background: '#ffffff',
+                border: '2px solid #e2e8f0',
+                borderRadius: '18px',
+                padding: '28px 24px',
+                cursor: 'pointer',
+                transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
+                boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+                textAlign: 'left',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = '#0284c7';
+                e.currentTarget.style.transform = 'translateY(-2px)';
+                e.currentTarget.style.boxShadow = '0 12px 20px -3px rgba(2, 132, 199, 0.12)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = '#e2e8f0';
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0,0,0,0.05)';
+              }}
+            >
+              <div>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  marginBottom: '18px',
+                }}>
+                  <div style={{
+                    width: '48px',
+                    height: '48px',
+                    borderRadius: '12px',
+                    background: '#f0f9ff',
+                    color: '#0284c7',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    border: '1px solid #bae6fd',
+                  }}>
+                    <FileText size={24} />
+                  </div>
+                  <span style={{
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    padding: '4px 10px',
+                    borderRadius: '20px',
+                    background: '#f1f5f9',
+                    color: '#475569',
+                  }}>
+                    {normalInvoicesCount} {normalInvoicesCount === 1 ? 'Invoice' : 'Invoices'}
+                  </span>
+                </div>
+
+                <h3 style={{ fontSize: '20px', fontWeight: 700, color: '#0f172a', margin: '0 0 6px 0' }}>
+                  Normal Invoice
+                </h3>
+                <p style={{ fontSize: '13.5px', color: '#64748b', margin: '0 0 20px 0', lineHeight: 1.5 }}>
+                  Standard non-tax invoices without GST components. Independent sequence numbering.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{
+                  width: '100%',
+                  padding: '12px',
+                  fontSize: '14px',
+                  fontWeight: 600,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  borderRadius: '10px',
+                  borderColor: '#cbd5e1',
+                  color: '#0f172a',
+                }}
+              >
+                <span>View Normal Invoices</span>
+                <span style={{ fontSize: '16px' }}>&rarr;</span>
+              </button>
+            </div>
+
+            {/* Button 2: Tax Invoice */}
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={() => {
+                setSelectedInvoiceType('tax');
+                setSelectedMonth(null);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  setSelectedInvoiceType('tax');
+                  setSelectedMonth(null);
+                }
+              }}
+              style={{
+                background: '#ffffff',
+                border: '2px solid #e2e8f0',
+                borderRadius: '18px',
+                padding: '28px 24px',
+                cursor: 'pointer',
+                transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
+                boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+                textAlign: 'left',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = '#2563eb';
+                e.currentTarget.style.transform = 'translateY(-2px)';
+                e.currentTarget.style.boxShadow = '0 12px 20px -3px rgba(37, 99, 235, 0.15)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = '#e2e8f0';
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0,0,0,0.05)';
+              }}
+            >
+              <div>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  marginBottom: '18px',
+                }}>
+                  <div style={{
+                    width: '48px',
+                    height: '48px',
+                    borderRadius: '12px',
+                    background: '#eff6ff',
+                    color: '#2563eb',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    border: '1px solid #bfdbfe',
+                  }}>
+                    <FileSpreadsheet size={24} />
+                  </div>
+                  <span style={{
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    padding: '4px 10px',
+                    borderRadius: '20px',
+                    background: '#eff6ff',
+                    color: '#1d4ed8',
+                    border: '1px solid #dbeafe',
+                  }}>
+                    {taxInvoicesCount} {taxInvoicesCount === 1 ? 'Invoice' : 'Invoices'}
+                  </span>
+                </div>
+
+                <h3 style={{ fontSize: '20px', fontWeight: 700, color: '#0f172a', margin: '0 0 6px 0' }}>
+                  Tax Invoice
+                </h3>
+                <p style={{ fontSize: '13.5px', color: '#64748b', margin: '0 0 20px 0', lineHeight: 1.5 }}>
+                  GST Tax Invoices with CGST, SGST, IGST calculations and HSN/SAC codes.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                className="btn btn-primary"
+                style={{
+                  width: '100%',
+                  padding: '12px',
+                  fontSize: '14px',
+                  fontWeight: 600,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  borderRadius: '10px',
+                }}
+              >
+                <span>View Tax Invoices</span>
+                <span style={{ fontSize: '16px' }}>&rarr;</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : selectedMonth === null ? (
         <>
           {/* Top Header Bar for Month Selection */}
           <div className="history-top-bar">
             <div>
-              <h2 style={{ fontSize: '22px', fontWeight: 700, color: '#0f172a' }}>Invoice History</h2>
-              <p style={{ fontSize: '13px', color: '#64748b' }}>
-                Select a month to view its invoices in sequence, or view all saved invoices.
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setSelectedInvoiceType(null)}
+                style={{
+                  padding: '6px 12px',
+                  fontSize: '12.5px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  fontWeight: 600,
+                  marginBottom: '10px',
+                  color: '#1e3a8a',
+                }}
+                title="Return to Invoice Type Selection"
+              >
+                <ArrowLeft size={15} />
+                <span>Back to Invoice Types</span>
+              </button>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <h2 style={{ fontSize: '22px', fontWeight: 700, color: '#0f172a', margin: 0 }}>
+                  {selectedInvoiceType === 'tax' ? 'Tax Invoices' : 'Normal Invoices'}
+                </h2>
+                <span
+                  style={{
+                    background: selectedInvoiceType === 'tax' ? '#eff6ff' : '#ecfdf5',
+                    border: `1px solid ${selectedInvoiceType === 'tax' ? '#bfdbfe' : '#a7f3d0'}`,
+                    padding: '2px 8px',
+                    borderRadius: '6px',
+                    fontSize: '11.5px',
+                    fontWeight: 700,
+                    color: selectedInvoiceType === 'tax' ? '#1d4ed8' : '#065f46',
+                  }}
+                >
+                  {selectedInvoiceType === 'tax' ? 'GST Tax Invoices' : 'Normal Invoices'}
+                </span>
+              </div>
+              <p style={{ fontSize: '13px', color: '#64748b', marginTop: '4px' }}>
+                Select a month to view {selectedInvoiceType === 'tax' ? 'tax' : 'normal'} invoices in sequence, or view all.
               </p>
             </div>
 
@@ -557,7 +847,7 @@ export const InvoiceHistoryPage: React.FC<InvoiceHistoryPageProps> = ({
           {/* Invoices List View for Selected Month */}
           <div className="history-top-bar">
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
                 <button
                   type="button"
                   className="btn btn-secondary"
@@ -574,21 +864,43 @@ export const InvoiceHistoryPage: React.FC<InvoiceHistoryPageProps> = ({
                   title="Return to Month Selection"
                 >
                   <ArrowLeft size={15} />
-                  <span>Back to Month Selection</span>
+                  <span>Back to Months</span>
+                </button>
+
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => {
+                    setSelectedInvoiceType(null);
+                    setSelectedMonth(null);
+                  }}
+                  style={{
+                    padding: '6px 12px',
+                    fontSize: '12.5px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    fontWeight: 600,
+                    color: '#475569',
+                  }}
+                  title="Return to Invoice Type Selection"
+                >
+                  <Layers size={14} />
+                  <span>Switch Invoice Type</span>
                 </button>
 
                 <span
                   style={{
-                    background: '#eff6ff',
-                    border: '1px solid #bfdbfe',
+                    background: selectedInvoiceType === 'tax' ? '#eff6ff' : '#ecfdf5',
+                    border: `1px solid ${selectedInvoiceType === 'tax' ? '#bfdbfe' : '#a7f3d0'}`,
                     padding: '3px 10px',
                     borderRadius: '6px',
                     fontSize: '12px',
                     fontWeight: 700,
-                    color: '#1e3a8a',
+                    color: selectedInvoiceType === 'tax' ? '#1d4ed8' : '#065f46',
                   }}
                 >
-                  {selectedMonth === 'all'
+                  {selectedInvoiceType === 'tax' ? 'Tax Invoices' : 'Normal Invoices'} &bull; {selectedMonth === 'all'
                     ? 'All Months'
                     : MONTH_NAMES[selectedMonth]}{' '}
                   {selectedYear !== 'all' ? selectedYear : ''}
@@ -596,10 +908,10 @@ export const InvoiceHistoryPage: React.FC<InvoiceHistoryPageProps> = ({
               </div>
 
               <h2 style={{ fontSize: '20px', fontWeight: 700, color: '#0f172a' }}>
-                {selectedMonth === 'all' ? 'All Invoices' : `${MONTH_NAMES[selectedMonth]} Invoices`}
+                {selectedInvoiceType === 'tax' ? 'Tax Invoices' : 'Normal Invoices'} – {selectedMonth === 'all' ? 'All Invoices' : `${MONTH_NAMES[selectedMonth]} Invoices`}
               </h2>
               <p style={{ fontSize: '12.5px', color: '#64748b' }}>
-                Sorted in ascending numerical order by invoice sequence number.
+                Displaying {selectedInvoiceType === 'tax' ? 'Tax' : 'Normal'} invoices sorted in ascending numerical order by invoice sequence number.
               </p>
             </div>
 

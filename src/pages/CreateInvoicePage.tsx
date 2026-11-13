@@ -23,11 +23,12 @@ import {
   saveInvoiceFirestore,
   subscribeCompanySettings,
   subscribeInvoices,
+  isInvoiceOfType,
 } from '../services/firestoreService';
 import { subscribeClients } from '../services/clientService';
 import { saveInvoice as saveLocalInvoice } from '../db';
 import { uploadInvoicePdfToDrive } from '../services/googleDriveClient';
-import { getIndianFinancialYear, formatInvoiceNumber, formatIndianCurrency } from '../utils/financialYear';
+import { getIndianFinancialYear, formatIndianCurrency } from '../utils/financialYear';
 import { calculateInvoiceTotals } from '../utils/taxCalculator';
 import { downloadInvoicePDF, formatDefaultPdfFilename } from '../utils/pdfGenerator';
 import { InvoiceDocument } from '../components/invoice/InvoiceDocument';
@@ -161,7 +162,7 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
     }
   }, [initialClient, initialInvoice]);
 
-  // Duplicate invoice number validation
+  // Duplicate invoice number validation (independent for Tax and Normal invoices)
   useEffect(() => {
     if (!invoiceNumber.trim()) {
       setIsDuplicateNumber(false);
@@ -172,10 +173,11 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
       (inv) =>
         inv.id !== existingInvoiceId &&
         inv.invoiceNumber &&
-        inv.invoiceNumber.trim().toLowerCase() === target
+        inv.invoiceNumber.trim().toLowerCase() === target &&
+        isInvoiceOfType(inv, invoiceType)
     );
     setIsDuplicateNumber(isDup);
-  }, [invoiceNumber, allInvoices, existingInvoiceId]);
+  }, [invoiceNumber, allInvoices, existingInvoiceId, invoiceType]);
 
   const loadSettingsAndInit = async () => {
     try {
@@ -214,7 +216,7 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
         setCustomerGstin('');
         const today = new Date().toISOString().slice(0, 10);
         setInvoiceDate(today);
-        const nextNum = await previewNextInvoiceNumberFirestore(today);
+        const nextNum = await previewNextInvoiceNumberFirestore(today, 'regular');
         setInvoiceNumber(nextNum);
       }
     } catch (err: unknown) {
@@ -227,15 +229,21 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
   const handleDateChange = async (newDate: string) => {
     setInvoiceDate(newDate);
     if (!isEditingExisting && settings) {
-      const fy = getIndianFinancialYear(newDate);
-      const prefix = settings.invoicePrefix || 'MGS';
-      const parts = invoiceNumber.split('/');
-      if (parts.length === 3) {
-        const seq = parseInt(parts[2], 10) || settings.nextSequence || 1;
-        setInvoiceNumber(formatInvoiceNumber(prefix, fy, seq));
-      } else {
-        const generated = await previewNextInvoiceNumberFirestore(newDate);
-        setInvoiceNumber(generated);
+      const generated = await previewNextInvoiceNumberFirestore(newDate, invoiceType);
+      setInvoiceNumber(generated);
+    }
+  };
+
+  // Switch between Regular (Normal) Invoice and Tax Invoice with independent numbering
+  const handleSelectInvoiceType = async (newType: InvoiceType) => {
+    if (newType === invoiceType) return;
+    setInvoiceType(newType);
+    if (!isEditingExisting) {
+      try {
+        const nextNum = await previewNextInvoiceNumberFirestore(invoiceDate, newType);
+        setInvoiceNumber(nextNum);
+      } catch (e) {
+        console.warn('Could not auto-generate invoice number on type switch:', e);
       }
     }
   };
@@ -419,7 +427,8 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
       finalInvNo = await reserveAndCommitInvoiceNumberFirestore(
         invoiceDate,
         invoiceNumber,
-        existingInvoiceId || undefined
+        existingInvoiceId || undefined,
+        invoiceType
       );
       setInvoiceNumber(finalInvNo);
     }
@@ -650,7 +659,7 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
               <div style={{ display: 'inline-flex', background: '#f1f5f9', borderRadius: '8px', padding: '3px', gap: '4px', border: '1px solid #e2e8f0' }}>
                 <button
                   type="button"
-                  onClick={() => setInvoiceType('regular')}
+                  onClick={() => handleSelectInvoiceType('regular')}
                   style={{
                     padding: '6px 14px',
                     fontSize: '12.5px',
@@ -668,7 +677,7 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setInvoiceType('tax')}
+                  onClick={() => handleSelectInvoiceType('tax')}
                   style={{
                     padding: '6px 14px',
                     fontSize: '12.5px',

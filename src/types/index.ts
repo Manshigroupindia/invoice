@@ -28,8 +28,12 @@ export interface CompanySettings {
   branch: string;
   qrScannerUrl?: string;
   qrScannerDataUrl?: string; // fallback / legacy field
-  invoicePrefix: string; // e.g. "MGS"
-  nextSequence: number; // e.g. 79
+  invoicePrefix: string; // e.g. "MGS" (fallback / legacy field)
+  nextSequence: number; // e.g. 22 (fallback / legacy field)
+  taxInvoicePrefix?: string; // Prefix for Tax Invoices (default: 'MGS')
+  taxNextSequence?: number; // Next sequence for Tax Invoices
+  normalInvoicePrefix?: string; // Prefix for Normal Invoices (default: 'MGS')
+  normalNextSequence?: number; // Next sequence for Normal Invoices
   updatedAt?: string;
   googleDriveClientId?: string; // Optional client-side OAuth Client ID override
   appPin?: string; // 4-digit website PIN lock (default: '1234')
@@ -94,6 +98,10 @@ export interface NumberingMetadata {
   financialYear: string;
   nextSequence: number;
   usedNumbers: string[];
+  taxNextSequence?: number;
+  taxUsedNumbers?: string[];
+  normalNextSequence?: number;
+  normalUsedNumbers?: string[];
   updatedAt?: string;
 }
 

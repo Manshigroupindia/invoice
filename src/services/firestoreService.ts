@@ -13,7 +13,7 @@ import {
   type Unsubscribe,
 } from 'firebase/firestore';
 import { firestore } from '../lib/firebase';
-import type { CompanySettings, InvoiceRecord, NumberingMetadata } from '../types';
+import type { CompanySettings, InvoiceRecord, NumberingMetadata, InvoiceType } from '../types';
 import {
   getIndianFinancialYear,
   formatInvoiceNumber,
@@ -42,7 +42,11 @@ export const DEFAULT_SETTINGS: CompanySettings = {
   qrScannerUrl: '/assets/qr_scanner.jpg',
   qrScannerDataUrl: '/assets/qr_scanner.jpg',
   invoicePrefix: 'MGS',
-  nextSequence: 1,
+  nextSequence: 22,
+  taxInvoicePrefix: 'MGS',
+  taxNextSequence: 22,
+  normalInvoicePrefix: 'MGS',
+  normalNextSequence: 1,
   appPin: '1234',
 };
 
@@ -54,6 +58,30 @@ const INVOICES_COLL_REF = collection(firestore, 'invoices');
 /**
  * 1. COMPANY SETTINGS
  */
+
+export function normalizeCompanySettings(data: Partial<CompanySettings>): CompanySettings {
+  const taxPrefix = data.taxInvoicePrefix || data.invoicePrefix || 'MGS';
+  const taxSeq = data.taxNextSequence !== undefined
+    ? data.taxNextSequence
+    : (data.nextSequence !== undefined ? data.nextSequence : 22);
+  const normalPrefix = data.normalInvoicePrefix || 'MGS';
+  const normalSeq = data.normalNextSequence !== undefined ? data.normalNextSequence : 1;
+
+  return {
+    ...DEFAULT_SETTINGS,
+    ...data,
+    taxInvoicePrefix: taxPrefix,
+    taxNextSequence: taxSeq,
+    normalInvoicePrefix: normalPrefix,
+    normalNextSequence: normalSeq,
+    invoicePrefix: taxPrefix, // keep legacy field in sync with tax
+    nextSequence: taxSeq,     // keep legacy field in sync with tax
+    logoUrl: data.logoUrl || data.logoDataUrl || '/assets/logo.png',
+    qrScannerUrl: data.qrScannerUrl || data.qrScannerDataUrl || '/assets/qr_scanner.jpg',
+    logoDataUrl: data.logoUrl || data.logoDataUrl || '/assets/logo.png',
+    qrScannerDataUrl: data.qrScannerUrl || data.qrScannerDataUrl || '/assets/qr_scanner.jpg',
+  };
+}
 
 export async function getCompanySettingsFirestore(): Promise<CompanySettings> {
   try {
@@ -67,14 +95,7 @@ export async function getCompanySettingsFirestore(): Promise<CompanySettings> {
       return defaultData;
     }
     const data = snap.data() as CompanySettings;
-    return {
-      ...DEFAULT_SETTINGS,
-      ...data,
-      logoUrl: data.logoUrl || data.logoDataUrl || '/assets/logo.png',
-      qrScannerUrl: data.qrScannerUrl || data.qrScannerDataUrl || '/assets/qr_scanner.jpg',
-      logoDataUrl: data.logoUrl || data.logoDataUrl || '/assets/logo.png',
-      qrScannerDataUrl: data.qrScannerUrl || data.qrScannerDataUrl || '/assets/qr_scanner.jpg',
-    };
+    return normalizeCompanySettings(data);
   } catch (err) {
     console.warn('Error reading settings from Firestore, returning defaults:', err);
     return DEFAULT_SETTINGS;
@@ -90,14 +111,7 @@ export function subscribeCompanySettings(
     (snap) => {
       if (snap.exists()) {
         const data = snap.data() as CompanySettings;
-        callback({
-          ...DEFAULT_SETTINGS,
-          ...data,
-          logoUrl: data.logoUrl || data.logoDataUrl || '/assets/logo.png',
-          qrScannerUrl: data.qrScannerUrl || data.qrScannerDataUrl || '/assets/qr_scanner.jpg',
-          logoDataUrl: data.logoUrl || data.logoDataUrl || '/assets/logo.png',
-          qrScannerDataUrl: data.qrScannerUrl || data.qrScannerDataUrl || '/assets/qr_scanner.jpg',
-        });
+        callback(normalizeCompanySettings(data));
       } else {
         callback(DEFAULT_SETTINGS);
       }
@@ -113,9 +127,22 @@ export async function saveCompanySettingsFirestore(
   updated: Partial<CompanySettings>
 ): Promise<CompanySettings> {
   const current = await getCompanySettingsFirestore();
+  const taxPrefix = updated.taxInvoicePrefix || updated.invoicePrefix || current.taxInvoicePrefix || 'MGS';
+  const taxSeq = updated.taxNextSequence !== undefined
+    ? updated.taxNextSequence
+    : (updated.nextSequence !== undefined ? updated.nextSequence : current.taxNextSequence || 22);
+  const normalPrefix = updated.normalInvoicePrefix || current.normalInvoicePrefix || 'MGS';
+  const normalSeq = updated.normalNextSequence !== undefined ? updated.normalNextSequence : current.normalNextSequence || 1;
+
   const merged: CompanySettings = {
     ...current,
     ...updated,
+    taxInvoicePrefix: taxPrefix,
+    taxNextSequence: taxSeq,
+    normalInvoicePrefix: normalPrefix,
+    normalNextSequence: normalSeq,
+    invoicePrefix: taxPrefix, // keep legacy field in sync with tax
+    nextSequence: taxSeq,     // keep legacy field in sync with tax
     logoUrl: updated.logoUrl || updated.logoDataUrl || current.logoUrl || '/assets/logo.png',
     qrScannerUrl: updated.qrScannerUrl || updated.qrScannerDataUrl || current.qrScannerUrl || '/assets/qr_scanner.jpg',
     logoDataUrl: updated.logoUrl || updated.logoDataUrl || current.logoDataUrl || '/assets/logo.png',
@@ -125,27 +152,32 @@ export async function saveCompanySettingsFirestore(
 
   await setDoc(SETTINGS_DOC_REF, sanitizeForFirestore(merged));
 
-  // If nextSequence was explicitly changed, update invoiceMetadata/numbering as well
-  if (updated.nextSequence !== undefined) {
-    try {
-      const snap = await getDoc(NUMBERING_DOC_REF);
-      const curFY = getIndianFinancialYear(new Date());
-      if (snap.exists()) {
-        await updateDoc(NUMBERING_DOC_REF, sanitizeForFirestore({
-          nextSequence: updated.nextSequence,
-          updatedAt: new Date().toISOString(),
-        }));
-      } else {
-        await setDoc(NUMBERING_DOC_REF, sanitizeForFirestore({
-          financialYear: curFY,
-          nextSequence: updated.nextSequence,
-          usedNumbers: [],
-          updatedAt: new Date().toISOString(),
-        }));
-      }
-    } catch (e) {
-      console.warn('Could not update numbering metadata sequence:', e);
+  // Sync sequences to invoiceMetadata/numbering
+  try {
+    const snap = await getDoc(NUMBERING_DOC_REF);
+    const curFY = getIndianFinancialYear(new Date());
+    if (snap.exists()) {
+      const updateData: Record<string, unknown> = {
+        updatedAt: new Date().toISOString(),
+        taxNextSequence: taxSeq,
+        nextSequence: taxSeq, // satisfies isValidNumbering rule
+        normalNextSequence: normalSeq,
+      };
+      await updateDoc(NUMBERING_DOC_REF, sanitizeForFirestore(updateData));
+    } else {
+      await setDoc(NUMBERING_DOC_REF, sanitizeForFirestore({
+        financialYear: curFY,
+        nextSequence: taxSeq,
+        taxNextSequence: taxSeq,
+        normalNextSequence: normalSeq,
+        usedNumbers: [],
+        taxUsedNumbers: [],
+        normalUsedNumbers: [],
+        updatedAt: new Date().toISOString(),
+      }));
     }
+  } catch (e) {
+    console.warn('Could not update numbering metadata sequence:', e);
   }
 
   return merged;
@@ -155,8 +187,36 @@ export async function saveCompanySettingsFirestore(
  * 2. NUMBERING SEQUENCE & RESERVATION (TRANSACTIONAL)
  */
 
+/**
+ * Helper to determine whether an invoice record is Tax or Normal (Regular)
+ */
+export function isInvoiceOfType(inv: InvoiceRecord, type: InvoiceType): boolean {
+  if (type === 'tax') {
+    return (
+      inv.invoiceType === 'tax' ||
+      (!inv.invoiceType &&
+        !!(
+          (inv.totalTax && inv.totalTax > 0) ||
+          (inv.cgstRate && inv.cgstRate > 0) ||
+          (inv.sgstRate && inv.sgstRate > 0) ||
+          (inv.igstRate && inv.igstRate > 0)
+        ))
+    );
+  }
+  // 'regular' (Normal Invoice)
+  return (
+    inv.invoiceType === 'regular' ||
+    (!inv.invoiceType &&
+      !inv.totalTax &&
+      !inv.cgstRate &&
+      !inv.sgstRate &&
+      !inv.igstRate)
+  );
+}
+
 export async function getHighestSequenceForFinancialYear(
-  fy: string
+  fy: string,
+  type: InvoiceType = 'tax'
 ): Promise<{ maxSeq: number; padLength: number; usedNumbers: string[] }> {
   try {
     const invoicesSnap = await getDocs(INVOICES_COLL_REF);
@@ -166,7 +226,7 @@ export async function getHighestSequenceForFinancialYear(
 
     invoicesSnap.forEach((d) => {
       const inv = d.data() as InvoiceRecord;
-      if (inv.invoiceNumber) {
+      if (inv.invoiceNumber && isInvoiceOfType(inv, type)) {
         const numStr = inv.invoiceNumber.trim();
         used.add(numStr);
         const invFy = numStr.includes(`/${fy}/`)
@@ -192,14 +252,15 @@ export async function getHighestSequenceForFinancialYear(
 
     return { maxSeq, padLength: maxPad, usedNumbers: Array.from(used) };
   } catch (err) {
-    console.warn('Error reading highest sequence for financial year:', err);
+    console.warn(`Error reading highest sequence for financial year (${type}):`, err);
     return { maxSeq: 0, padLength: 2, usedNumbers: [] };
   }
 }
 
 export async function checkInvoiceNumberExistsFirestore(
   invoiceNumber: string,
-  excludeId?: string
+  excludeId?: string,
+  type?: InvoiceType
 ): Promise<boolean> {
   if (!invoiceNumber || !invoiceNumber.trim()) return false;
   const target = invoiceNumber.trim().toLowerCase();
@@ -210,7 +271,9 @@ export async function checkInvoiceNumberExistsFirestore(
       if (!excludeId || d.id !== excludeId) {
         const inv = d.data() as InvoiceRecord;
         if (inv.invoiceNumber && inv.invoiceNumber.trim().toLowerCase() === target) {
-          exists = true;
+          if (!type || isInvoiceOfType(inv, type)) {
+            exists = true;
+          }
         }
       }
     });
@@ -221,14 +284,22 @@ export async function checkInvoiceNumberExistsFirestore(
   }
 }
 
-export async function previewNextInvoiceNumberFirestore(dateStr: string): Promise<string> {
+export async function previewNextInvoiceNumberFirestore(
+  dateStr: string,
+  type: InvoiceType = 'tax'
+): Promise<string> {
   const settings = await getCompanySettingsFirestore();
-  const prefix = settings.invoicePrefix || 'MGS';
+  const prefix = type === 'tax'
+    ? (settings.taxInvoicePrefix || settings.invoicePrefix || 'MGS')
+    : (settings.normalInvoicePrefix || 'MGS');
+  const configuredSeq = type === 'tax'
+    ? (settings.taxNextSequence || settings.nextSequence || 22)
+    : (settings.normalNextSequence || 1);
   const fy = getIndianFinancialYear(dateStr);
 
   try {
-    const { maxSeq, padLength, usedNumbers } = await getHighestSequenceForFinancialYear(fy);
-    let nextSeq = maxSeq > 0 ? maxSeq + 1 : 1;
+    const { maxSeq, padLength, usedNumbers } = await getHighestSequenceForFinancialYear(fy, type);
+    let nextSeq = maxSeq > 0 ? maxSeq + 1 : configuredSeq;
     const targetPad = Math.max(2, padLength);
     let candidate = formatInvoiceNumber(prefix, fy, nextSeq, targetPad);
 
@@ -239,43 +310,71 @@ export async function previewNextInvoiceNumberFirestore(dateStr: string): Promis
 
     return candidate;
   } catch (err) {
-    console.warn('Error previewing next invoice number, falling back to 01:', err);
+    console.warn(`Error previewing next invoice number for ${type}, falling back to 01:`, err);
     return formatInvoiceNumber(prefix, fy, 1, 2);
   }
 }
 
 /**
- * Safely reserve an invoice number using a Firestore Transaction to prevent race conditions
+ * Safely reserve an invoice number using a Firestore Transaction to prevent race conditions.
+ * Normal Invoices and Tax Invoices maintain completely independent numbering sequences.
  */
 export async function reserveAndCommitInvoiceNumberFirestore(
   dateStr: string,
   manualInvoiceNo?: string,
-  excludeId?: string
+  excludeId?: string,
+  type: InvoiceType = 'tax'
 ): Promise<string> {
   const settings = await getCompanySettingsFirestore();
-  const prefix = settings.invoicePrefix || 'MGS';
+  const prefix = type === 'tax'
+    ? (settings.taxInvoicePrefix || settings.invoicePrefix || 'MGS')
+    : (settings.normalInvoicePrefix || 'MGS');
+  const configuredSeq = type === 'tax'
+    ? (settings.taxNextSequence || settings.nextSequence || 22)
+    : (settings.normalNextSequence || 1);
   const fy = getIndianFinancialYear(dateStr);
 
-  const { maxSeq, padLength, usedNumbers } = await getHighestSequenceForFinancialYear(fy);
+  const { maxSeq, padLength, usedNumbers } = await getHighestSequenceForFinancialYear(fy, type);
   const targetPad = Math.max(2, padLength);
 
   return runTransaction(firestore, async (transaction) => {
     const snap = await transaction.get(NUMBERING_DOC_REF);
-    let nextSeq = maxSeq > 0 ? maxSeq + 1 : 1;
+    let nextSeq = maxSeq > 0 ? maxSeq + 1 : configuredSeq;
     const used = new Set<string>(usedNumbers);
+
+    let docTaxUsed: string[] = [];
+    let docNormalUsed: string[] = [];
+    let docGeneralUsed: string[] = [];
+    let docTaxNext = maxSeq > 0 ? maxSeq + 1 : (settings.taxNextSequence || 22);
+    let docNormalNext = settings.normalNextSequence || 1;
 
     if (snap.exists()) {
       const data = snap.data() as NumberingMetadata;
-      if (Array.isArray(data.usedNumbers)) {
-        data.usedNumbers.forEach((n) => {
-          if (n && n.trim()) used.add(n.trim());
-        });
+      docGeneralUsed = Array.isArray(data.usedNumbers) ? [...data.usedNumbers] : [];
+      docTaxUsed = Array.isArray(data.taxUsedNumbers) ? [...data.taxUsedNumbers] : [...docGeneralUsed];
+      docNormalUsed = Array.isArray(data.normalUsedNumbers) ? [...data.normalUsedNumbers] : [];
+      if (typeof data.taxNextSequence === 'number') {
+        docTaxNext = data.taxNextSequence;
+      } else if (typeof data.nextSequence === 'number') {
+        docTaxNext = data.nextSequence;
       }
-      // If numbering metadata smoothly continues from actual invoices, keep it,
-      // but do not allow large phantom jumps from legacy metadata.
-      if (data.financialYear === fy && typeof data.nextSequence === 'number') {
-        if (data.nextSequence >= nextSeq && data.nextSequence <= maxSeq + 5) {
-          nextSeq = data.nextSequence;
+      if (typeof data.normalNextSequence === 'number') {
+        docNormalNext = data.normalNextSequence;
+      }
+
+      if (type === 'tax') {
+        docTaxUsed.forEach((n) => n && n.trim() && used.add(n.trim()));
+        if (data.financialYear === fy && typeof docTaxNext === 'number') {
+          if (docTaxNext >= nextSeq && docTaxNext <= maxSeq + 5) {
+            nextSeq = docTaxNext;
+          }
+        }
+      } else {
+        docNormalUsed.forEach((n) => n && n.trim() && used.add(n.trim()));
+        if (data.financialYear === fy && typeof docNormalNext === 'number') {
+          if (docNormalNext >= nextSeq && docNormalNext <= maxSeq + 5) {
+            nextSeq = docNormalNext;
+          }
         }
       }
     }
@@ -292,7 +391,7 @@ export async function reserveAndCommitInvoiceNumberFirestore(
     } else {
       const isUsed = Array.from(used).some((u) => u.toLowerCase() === finalNumber.toLowerCase());
       if (isUsed && !excludeId) {
-        throw new Error(`This invoice number already exists.`);
+        throw new Error(`This invoice number already exists for ${type === 'tax' ? 'Tax' : 'Normal'} Invoices.`);
       }
 
       const seq = extractInvoiceSequenceNumber(finalNumber);
@@ -303,17 +402,38 @@ export async function reserveAndCommitInvoiceNumberFirestore(
 
     used.add(finalNumber);
 
+    if (type === 'tax') {
+      docTaxNext = nextSeq;
+      if (!docTaxUsed.includes(finalNumber)) docTaxUsed.push(finalNumber);
+      if (!docGeneralUsed.includes(finalNumber)) docGeneralUsed.push(finalNumber);
+    } else {
+      docNormalNext = nextSeq;
+      if (!docNormalUsed.includes(finalNumber)) docNormalUsed.push(finalNumber);
+    }
+
+    // Update numbering document in Firestore (always maintains nextSequence & usedNumbers for rules compliance)
     transaction.set(NUMBERING_DOC_REF, sanitizeForFirestore({
       financialYear: fy,
-      nextSequence: nextSeq,
-      usedNumbers: Array.from(used),
+      nextSequence: docTaxNext,
+      usedNumbers: docGeneralUsed,
+      taxNextSequence: docTaxNext,
+      taxUsedNumbers: docTaxUsed,
+      normalNextSequence: docNormalNext,
+      normalUsedNumbers: docNormalUsed,
       updatedAt: new Date().toISOString(),
     }));
 
-    transaction.update(SETTINGS_DOC_REF, sanitizeForFirestore({
-      nextSequence: nextSeq,
+    // Update companySettings/main in Firestore
+    const settingsUpdate: Partial<CompanySettings> = {
       updatedAt: new Date().toISOString(),
-    }));
+    };
+    if (type === 'tax') {
+      settingsUpdate.taxNextSequence = nextSeq;
+      settingsUpdate.nextSequence = nextSeq;
+    } else {
+      settingsUpdate.normalNextSequence = nextSeq;
+    }
+    transaction.update(SETTINGS_DOC_REF, sanitizeForFirestore(settingsUpdate));
 
     return finalNumber;
   });
@@ -397,10 +517,11 @@ export async function saveInvoiceFirestore(invoice: InvoiceRecord): Promise<Invo
   // Validate duplicate invoice number before saving
   const isDuplicate = await checkInvoiceNumberExistsFirestore(
     sanitizedInvoice.invoiceNumber,
-    invoice.id
+    invoice.id,
+    sanitizedInvoice.invoiceType
   );
   if (isDuplicate) {
-    throw new Error('This invoice number already exists.');
+    throw new Error(`This invoice number already exists for ${sanitizedInvoice.invoiceType === 'tax' ? 'Tax' : 'Normal'} Invoices.`);
   }
 
   // Auto-make customer available in Clients collection
@@ -417,15 +538,32 @@ export async function saveInvoiceFirestore(invoice: InvoiceRecord): Promise<Invo
         const data = numSnap.data() as NumberingMetadata;
         const used = new Set(data.usedNumbers || []);
         used.add(sanitizedInvoice.invoiceNumber);
-        await updateDoc(NUMBERING_DOC_REF, sanitizeForFirestore({
+
+        const updateObj: Record<string, unknown> = {
           usedNumbers: Array.from(used),
           updatedAt: now,
-        }));
+        };
+
+        if (sanitizedInvoice.invoiceType === 'tax') {
+          const taxUsed = new Set(data.taxUsedNumbers || data.usedNumbers || []);
+          taxUsed.add(sanitizedInvoice.invoiceNumber);
+          updateObj.taxUsedNumbers = Array.from(taxUsed);
+        } else {
+          const normUsed = new Set(data.normalUsedNumbers || []);
+          normUsed.add(sanitizedInvoice.invoiceNumber);
+          updateObj.normalUsedNumbers = Array.from(normUsed);
+        }
+
+        await updateDoc(NUMBERING_DOC_REF, sanitizeForFirestore(updateObj));
       } else {
         await setDoc(NUMBERING_DOC_REF, sanitizeForFirestore({
           financialYear: fy,
           nextSequence: 1,
+          taxNextSequence: sanitizedInvoice.invoiceType === 'tax' ? 1 : 22,
+          normalNextSequence: sanitizedInvoice.invoiceType === 'regular' ? 1 : 1,
           usedNumbers: [sanitizedInvoice.invoiceNumber],
+          taxUsedNumbers: sanitizedInvoice.invoiceType === 'tax' ? [sanitizedInvoice.invoiceNumber] : [],
+          normalUsedNumbers: sanitizedInvoice.invoiceType === 'regular' ? [sanitizedInvoice.invoiceNumber] : [],
           updatedAt: now,
         }));
       }
@@ -509,10 +647,20 @@ export async function deleteInvoiceFirestore(id: string): Promise<void> {
         const data = numSnap.data() as NumberingMetadata;
         const used = new Set(data.usedNumbers || []);
         used.add(invoice.invoiceNumber);
-        await updateDoc(NUMBERING_DOC_REF, sanitizeForFirestore({
+        const updateObj: Record<string, unknown> = {
           usedNumbers: Array.from(used),
           updatedAt: new Date().toISOString(),
-        }));
+        };
+        if (invoice.invoiceType === 'tax') {
+          const taxUsed = new Set(data.taxUsedNumbers || data.usedNumbers || []);
+          taxUsed.add(invoice.invoiceNumber);
+          updateObj.taxUsedNumbers = Array.from(taxUsed);
+        } else {
+          const normUsed = new Set(data.normalUsedNumbers || []);
+          normUsed.add(invoice.invoiceNumber);
+          updateObj.normalUsedNumbers = Array.from(normUsed);
+        }
+        await updateDoc(NUMBERING_DOC_REF, sanitizeForFirestore(updateObj));
       }
     } catch (e) {
       console.warn('Failed to lock deleted invoice number in numbering metadata:', e);

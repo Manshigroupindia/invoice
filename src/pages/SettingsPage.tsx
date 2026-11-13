@@ -31,6 +31,7 @@ import {
   disconnectGoogleDrive,
 } from '../services/googleDriveClient';
 import { ConfirmModal } from '../components/common/Feedback';
+import { getIndianFinancialYear } from '../utils/financialYear';
 
 interface SettingsPageProps {
   onSuccessToast: (msg: string) => void;
@@ -293,6 +294,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
 
   const currentLogo = settings.logoUrl || settings.logoDataUrl || '/assets/logo.png';
   const currentQr = settings.qrScannerUrl || settings.qrScannerDataUrl || '/assets/qr_scanner.jpg';
+  const currentFy = getIndianFinancialYear(new Date());
 
   return (
     <div style={{ maxWidth: '1050px', margin: '0 auto' }}>
@@ -694,11 +696,19 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
             </div>
           </div>
 
-          {/* 4. Sequence & Cloud Numbering */}
+          {/* 4. Invoice Numbering Sequence for Tax Invoice */}
           <div className="ui-card">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', borderBottom: '1px solid #f1f5f9', paddingBottom: '12px' }}>
-              <FileText size={20} color="#1e3a8a" />
-              <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a' }}>Invoice Numbering Sequence (Firestore)</h3>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', borderBottom: '1px solid #f1f5f9', paddingBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <FileText size={20} color="#1e3a8a" />
+                <div>
+                  <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a' }}>Invoice Numbering Sequence for Tax Invoice</h3>
+                  <div style={{ fontSize: '12.5px', color: '#64748b' }}>Configure independent numbering sequence for GST Tax Invoices.</div>
+                </div>
+              </div>
+              <span style={{ fontSize: '11.5px', padding: '3px 8px', borderRadius: '12px', background: '#eff6ff', color: '#1d4ed8', fontWeight: 600, border: '1px solid #bfdbfe' }}>
+                Tax Invoices
+              </span>
             </div>
 
             <div className="settings-grid-2">
@@ -707,8 +717,12 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                 <input
                   type="text"
                   className="form-input"
-                  value={settings.invoicePrefix}
-                  onChange={(e) => handleInputChange('invoicePrefix', e.target.value.toUpperCase())}
+                  value={settings.taxInvoicePrefix || settings.invoicePrefix || 'MGS'}
+                  onChange={(e) => {
+                    const val = e.target.value.toUpperCase();
+                    handleInputChange('taxInvoicePrefix', val);
+                    handleInputChange('invoicePrefix', val);
+                  }}
                 />
                 <div className="form-hint">Format: PREFIX/YYYY-YY/XXX</div>
               </div>
@@ -719,11 +733,15 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                   type="number"
                   min="1"
                   className="form-input"
-                  value={settings.nextSequence}
-                  onChange={(e) => handleInputChange('nextSequence', parseInt(e.target.value, 10) || 1)}
+                  value={settings.taxNextSequence !== undefined ? settings.taxNextSequence : (settings.nextSequence || 22)}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value, 10) || 1;
+                    handleInputChange('taxNextSequence', val);
+                    handleInputChange('nextSequence', val);
+                  }}
                 />
                 <div className="form-hint">
-                  Next generated invoice: <strong>{settings.invoicePrefix || 'MGS'}/2026-27/{String(settings.nextSequence || 1).padStart(2, '0')}</strong>
+                  Next generated invoice: <strong>{(settings.taxInvoicePrefix || settings.invoicePrefix || 'MGS')}/{currentFy}/{String(settings.taxNextSequence !== undefined ? settings.taxNextSequence : (settings.nextSequence || 22)).padStart(2, '0')}</strong>
                 </div>
               </div>
             </div>
@@ -732,13 +750,69 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
               background: '#f8fafc',
               border: '1px solid #e2e8f0',
               borderRadius: '8px',
-              padding: '12px 16px',
-              fontSize: '13px',
+              padding: '10px 14px',
+              fontSize: '12.5px',
               color: '#475569',
               lineHeight: 1.5,
               marginTop: '8px',
             }}>
-              <strong>Transactional Safety:</strong> Firestore transactions guarantee numbers are locked atomically, preventing duplicate invoice numbers when multiple users issue invoices concurrently.
+              <strong>Tax Invoice Sequence:</strong> Automatically generated based on the highest existing Tax Invoice number in Cloud Firestore.
+            </div>
+          </div>
+
+          {/* 5. Invoice Numbering Sequence for Normal Invoice */}
+          <div className="ui-card">
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', borderBottom: '1px solid #f1f5f9', paddingBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <FileText size={20} color="#059669" />
+                <div>
+                  <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a' }}>Invoice Numbering Sequence for Normal Invoice</h3>
+                  <div style={{ fontSize: '12.5px', color: '#64748b' }}>Configure independent numbering sequence for Normal (non-tax) Invoices.</div>
+                </div>
+              </div>
+              <span style={{ fontSize: '11.5px', padding: '3px 8px', borderRadius: '12px', background: '#ecfdf5', color: '#065f46', fontWeight: 600, border: '1px solid #a7f3d0' }}>
+                Normal Invoices
+              </span>
+            </div>
+
+            <div className="settings-grid-2">
+              <div className="form-group">
+                <label className="form-label">Invoice Prefix</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={settings.normalInvoicePrefix || 'MGS'}
+                  onChange={(e) => handleInputChange('normalInvoicePrefix', e.target.value.toUpperCase())}
+                />
+                <div className="form-hint">Format: PREFIX/YYYY-YY/XXX</div>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Next Sequence Number</label>
+                <input
+                  type="number"
+                  min="1"
+                  className="form-input"
+                  value={settings.normalNextSequence !== undefined ? settings.normalNextSequence : 1}
+                  onChange={(e) => handleInputChange('normalNextSequence', parseInt(e.target.value, 10) || 1)}
+                />
+                <div className="form-hint">
+                  Next generated invoice: <strong>{(settings.normalInvoicePrefix || 'MGS')}/{currentFy}/{String(settings.normalNextSequence !== undefined ? settings.normalNextSequence : 1).padStart(2, '0')}</strong>
+                </div>
+              </div>
+            </div>
+
+            <div style={{
+              background: '#f8fafc',
+              border: '1px solid #e2e8f0',
+              borderRadius: '8px',
+              padding: '10px 14px',
+              fontSize: '12.5px',
+              color: '#475569',
+              lineHeight: 1.5,
+              marginTop: '8px',
+            }}>
+              <strong>Normal Invoice Sequence:</strong> Operates completely independently from Tax Invoices with atomic Firestore reservation.
             </div>
           </div>
 

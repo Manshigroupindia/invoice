@@ -45,8 +45,8 @@ export const MonthlyExcelModal: React.FC<MonthlyExcelModalProps> = ({
         inv.date.startsWith(targetPrefix) ||
         new Date(inv.date).getMonth() === selectedMonthIndex;
       if (!inMonth) return false;
-      if (invoiceTypeFilter === 'regular') return inv.invoiceType === 'regular' || !inv.invoiceType;
-      if (invoiceTypeFilter === 'tax') return inv.invoiceType === 'tax';
+      if (invoiceTypeFilter === 'regular') return inv.invoiceType === 'regular' || (!inv.invoiceType && !inv.totalTax && !inv.cgstRate && !inv.sgstRate && !inv.igstRate);
+      if (invoiceTypeFilter === 'tax') return inv.invoiceType === 'tax' || (!inv.invoiceType && !!(inv.totalTax || inv.cgstRate || inv.sgstRate || inv.igstRate));
       return true;
     }).length;
   }, [cachedInvoices, selectedYear, selectedMonthIndex, invoiceTypeFilter]);
