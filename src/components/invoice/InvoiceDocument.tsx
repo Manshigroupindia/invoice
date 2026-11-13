@@ -227,8 +227,8 @@ export const InvoiceDocument: React.FC<InvoiceDocumentProps> = ({
             <div className="inv-bill-to-row inv-bill-to-address">
               {invoice.customerAddress
                 ? invoice.customerAddress.split('\n').map((line, idx) => (
-                    <div key={idx}>{line}</div>
-                  ))
+                  <div key={idx}>{line}</div>
+                ))
                 : (
                   <>
                     <div>F-24/2,3rd floor, Nandi Appartment,</div>
@@ -347,7 +347,7 @@ export const InvoiceDocument: React.FC<InvoiceDocumentProps> = ({
                 </svg>
               </div>
               <div className="inv-badge-text-block">
-                <div className="inv-badge-title">Digitally Signed</div>
+                <div className="inv-badge-title">Digitally Signed By</div>
                 <div className="inv-badge-subtitle">Authorized Signatory</div>
               </div>
             </div>
