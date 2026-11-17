@@ -3,12 +3,12 @@ import {
   X,
   Send,
   Mail,
-  Share2,
   FileText,
   AlertCircle,
   CheckCircle2,
   Phone,
   Loader2,
+  Copy,
 } from 'lucide-react';
 import type { InvoiceRecord, CompanySettings, ClientRecord } from '../../types';
 import {
@@ -16,8 +16,6 @@ import {
   cleanIndianMobileNumber,
   isValidEmail,
   canShareFiles,
-  openWhatsAppChat,
-  openEmailClient,
 } from '../../utils/shareInvoice';
 import {
   formatDefaultPdfFilename,
@@ -80,9 +78,13 @@ export const ShareInvoiceModal: React.FC<ShareInvoiceModalProps> = ({
   const [isProcessing, setIsProcessing] = useState(false);
   const [contactError, setContactError] = useState<string | null>(null);
 
-  // Initialize modal whenever opened or channel changes
+  // Capability state: check if Web Share API with file sharing is supported
+  const [hasNativeShare, setHasNativeShare] = useState<boolean>(() => canShareFiles());
+
+  // Re-check capability and initialize state whenever modal opens or invoice/channel changes
   useEffect(() => {
     if (isOpen && invoice) {
+      setHasNativeShare(canShareFiles());
       const activeSettings = companySettings || undefined;
 
       // 1. Resolve Mobile Number
@@ -125,7 +127,6 @@ export const ShareInvoiceModal: React.FC<ShareInvoiceModalProps> = ({
   if (!isOpen || !invoice) return null;
 
   const isWhatsApp = channel === 'whatsapp';
-  const hasNativeShare = typeof window !== 'undefined' && canShareFiles();
 
   // Validate Contact Information
   const validateContact = (): { valid: boolean; cleanContact: string; error?: string } => {
@@ -169,8 +170,8 @@ export const ShareInvoiceModal: React.FC<ShareInvoiceModalProps> = ({
     }
   };
 
-  // Handle Standard Send Action (Downloads PDF and opens WhatsApp Web/app or Email client)
-  const handleProceedStandardSend = async () => {
+  // Handle Share Action using Web Share API with File Attachment
+  const handleShareInvoice = async () => {
     setContactError(null);
     const check = validateContact();
     if (!check.valid) {
@@ -178,83 +179,89 @@ export const ShareInvoiceModal: React.FC<ShareInvoiceModalProps> = ({
       return;
     }
 
+    // Check Web Share API file sharing support upfront
+    if (!canShareFiles()) {
+      const fallbackMsg =
+        'Automatic PDF attachment via Web Share is not supported in this browser or device. Direct sharing requires a browser with Web Share file support (e.g., Google Chrome, Microsoft Edge, Safari, or a mobile browser on Android / iOS).';
+      setContactError(fallbackMsg);
+      onErrorToast('Automatic PDF attachment is not supported in this browser.');
+      return;
+    }
+
     try {
       setIsProcessing(true);
 
-      // Save contact to client record if selected
+      // 1. Save contact to client record if selected
       await maybePersistContact();
 
-      // Generate PDF
+      // 2. Generate PDF purely in memory (Blob/File) WITHOUT triggering a separate download
       const activeSettings = companySettings || undefined;
-      const { doc } = await getInvoicePDFBlob(invoice, activeSettings);
+      const { blob } = await getInvoicePDFBlob(invoice, activeSettings);
       const safeFilename = sanitizePdfFilename(filenameInput);
+      const pdfFile = new File([blob], safeFilename, { type: 'application/pdf' });
 
-      // Download PDF so the user has the local file ready to attach
-      doc.save(safeFilename);
+      // 3. Verify that the browser can share this specific file
+      if (
+        typeof navigator === 'undefined' ||
+        typeof navigator.canShare !== 'function' ||
+        !navigator.canShare({ files: [pdfFile] })
+      ) {
+        throw new Error(
+          'Your browser does not support attaching this PDF file directly via the Web Share API.'
+        );
+      }
+
+      // 4. Automatically copy recipient contact info to clipboard for quick access in the app
+      if (check.cleanContact && typeof navigator.clipboard?.writeText === 'function') {
+        try {
+          await navigator.clipboard.writeText(check.cleanContact);
+        } catch {
+          // Clipboard write failure is non-fatal
+        }
+      }
+
+      // 5. Build native ShareData payload with the attached PDF File
+      const shareData: ShareData = {
+        files: [pdfFile],
+        title: isWhatsApp ? safeFilename : subjectText,
+        text: messageText,
+      };
+
+      // 6. Open native sharing sheet with attached PDF
+      await navigator.share(shareData);
 
       if (isWhatsApp) {
-        const cleanedMobile = check.cleanContact;
-        openWhatsAppChat(cleanedMobile, messageText);
         onSuccessToast(
-          `Opening WhatsApp. Invoice PDF "${safeFilename}" downloaded — please attach it to your chat.`
+          `Share menu opened for invoice ${invoice.invoiceNumber}. Select WhatsApp to send with attached PDF!`
         );
       } else {
-        const recipientEmail = check.cleanContact;
-        openEmailClient(recipientEmail, subjectText, messageText);
         onSuccessToast(
-          `Opening your email app. Invoice PDF "${safeFilename}" downloaded — please attach it to your email.`
+          `Share menu opened for invoice ${invoice.invoiceNumber}. Recipient (${check.cleanContact}) copied to clipboard!`
         );
       }
 
       onClose();
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Failed to generate PDF';
+      if ((err as Error)?.name === 'AbortError') {
+        // User dismissed the native share sheet - do not show an error toast
+        setIsProcessing(false);
+        return;
+      }
+      const msg = err instanceof Error ? err.message : 'Share failed';
       onErrorToast(msg);
     } finally {
       setIsProcessing(false);
     }
   };
 
-  // Handle Native Share (Web Share API Level 2 with file attachment)
-  const handleProceedNativeShare = async () => {
-    setContactError(null);
-    const check = validateContact();
-    if (!check.valid) {
-      setContactError(check.error || 'Invalid contact details.');
-      return;
-    }
-
-    try {
-      setIsProcessing(true);
-      await maybePersistContact();
-
-      const activeSettings = companySettings || undefined;
-      const { blob } = await getInvoicePDFBlob(invoice, activeSettings);
-      const safeFilename = sanitizePdfFilename(filenameInput);
-      const pdfFile = new File([blob], safeFilename, { type: 'application/pdf' });
-
-      if (navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
-        await navigator.share({
-          files: [pdfFile],
-          title: isWhatsApp ? safeFilename : subjectText,
-          text: messageText,
-        });
-        onSuccessToast(`Shared invoice ${invoice.invoiceNumber} with attached PDF.`);
-        onClose();
-      } else {
-        // Fallback to standard flow if device does not accept this file
-        await handleProceedStandardSend();
+  const handleCopyMessage = async () => {
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(messageText);
+        onSuccessToast('Message copied to clipboard.');
+      } catch {
+        onErrorToast('Failed to copy message.');
       }
-    } catch (err: unknown) {
-      if ((err as Error)?.name === 'AbortError') {
-        // User cancelled native share sheet
-        setIsProcessing(false);
-        return;
-      }
-      const msg = err instanceof Error ? err.message : 'Native share failed';
-      onErrorToast(msg);
-    } finally {
-      setIsProcessing(false);
     }
   };
 
@@ -339,6 +346,7 @@ export const ShareInvoiceModal: React.FC<ShareInvoiceModalProps> = ({
             overflowY: 'auto',
           }}
         >
+          {/* Error Message Box */}
           {contactError && (
             <div
               style={{
@@ -347,14 +355,43 @@ export const ShareInvoiceModal: React.FC<ShareInvoiceModalProps> = ({
                 borderRadius: '8px',
                 padding: '10px 14px',
                 display: 'flex',
-                alignItems: 'center',
+                alignItems: 'flex-start',
                 gap: '8px',
                 fontSize: '12.5px',
                 color: '#b91c1c',
+                lineHeight: 1.45,
               }}
             >
-              <AlertCircle size={16} style={{ flexShrink: 0 }} />
+              <AlertCircle size={16} style={{ flexShrink: 0, marginTop: '2px' }} />
               <span>{contactError}</span>
+            </div>
+          )}
+
+          {/* Fallback Banner: When Web Share API file sharing is unavailable */}
+          {!hasNativeShare && (
+            <div
+              style={{
+                background: '#fffbeb',
+                border: '1px solid #fde68a',
+                borderRadius: '8px',
+                padding: '12px 14px',
+                fontSize: '12.5px',
+                color: '#92400e',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '6px',
+              }}
+            >
+              <div style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <AlertCircle size={16} color="#d97706" style={{ flexShrink: 0 }} />
+                <span>Automatic PDF Attachment Not Supported in this Browser</span>
+              </div>
+              <div style={{ lineHeight: 1.45, color: '#b45309' }}>
+                Your current browser or device does not support the Web Share API with file attachments (<code>navigator.canShare</code>). Automatic PDF attachment cannot be performed in this environment.
+              </div>
+              <div style={{ fontSize: '12px', color: '#78350f', lineHeight: 1.4 }}>
+                <strong>To share invoices with automatically attached PDFs:</strong> Please open this portal in a supported browser such as <strong>Google Chrome</strong>, <strong>Microsoft Edge</strong>, <strong>Safari</strong>, or a mobile browser on Android / iOS.
+              </div>
             </div>
           )}
 
@@ -500,44 +537,38 @@ export const ShareInvoiceModal: React.FC<ShareInvoiceModalProps> = ({
             </div>
           </div>
 
-          {/* Sharing How-It-Works Guide Card */}
-          <div
-            style={{
-              background: '#f0fdf4',
-              border: '1px solid #bbf7d0',
-              borderRadius: '8px',
-              padding: '12px 14px',
-              fontSize: '12px',
-              color: '#166534',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '4px',
-            }}
-          >
-            <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <CheckCircle2 size={14} color="#16a34a" />
-              <span>How Sharing Works:</span>
+          {/* Sharing How-It-Works Card: When Web Share is available */}
+          {hasNativeShare && (
+            <div
+              style={{
+                background: '#f0fdf4',
+                border: '1px solid #bbf7d0',
+                borderRadius: '8px',
+                padding: '12px 14px',
+                fontSize: '12px',
+                color: '#166534',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '4px',
+              }}
+            >
+              <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <CheckCircle2 size={14} color="#16a34a" />
+                <span>Direct PDF Attachment via Web Share:</span>
+              </div>
+              <div style={{ lineHeight: 1.45, color: '#15803d' }}>
+                {isWhatsApp ? (
+                  <>
+                    Clicking <strong>Send WhatsApp</strong> generates the invoice PDF in memory and opens your device's native share menu with the PDF already attached and message prefilled. Simply select <strong>WhatsApp</strong> to send directly.
+                  </>
+                ) : (
+                  <>
+                    Clicking <strong>Send Email</strong> generates the invoice PDF in memory and opens your device's native share menu with the PDF already attached, subject, and message prefilled. The recipient's email ({emailInput || 'saved email'}) is copied to your clipboard so you can paste it into the recipient field.
+                  </>
+                )}
+              </div>
             </div>
-            <div style={{ lineHeight: 1.45, color: '#15803d' }}>
-              {isWhatsApp ? (
-                <>
-                  1. Clicking <strong>Open WhatsApp</strong> downloads the generated invoice PDF to your computer/device.
-                  <br />
-                  2. WhatsApp Web or the WhatsApp desktop app will open with the prefilled message and client number.
-                  <br />
-                  3. Simply click the paperclip attachment icon in WhatsApp to send your downloaded PDF!
-                </>
-              ) : (
-                <>
-                  1. Clicking <strong>Open Email</strong> downloads the invoice PDF to your computer.
-                  <br />
-                  2. Your default email client opens with the recipient, subject, and message prefilled.
-                  <br />
-                  3. Simply attach the downloaded PDF before hitting send!
-                </>
-              )}
-            </div>
-          </div>
+          )}
         </div>
 
         {/* Footer */}
@@ -546,6 +577,7 @@ export const ShareInvoiceModal: React.FC<ShareInvoiceModalProps> = ({
           style={{
             display: 'flex',
             justifyContent: 'flex-end',
+            alignItems: 'center',
             gap: '10px',
             borderTop: '1px solid #e2e8f0',
             padding: '14px 20px',
@@ -561,53 +593,65 @@ export const ShareInvoiceModal: React.FC<ShareInvoiceModalProps> = ({
             Cancel
           </button>
 
-          {/* Native Web Share Button (if supported on this device, e.g. mobile) */}
-          {hasNativeShare && (
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={handleProceedNativeShare}
-              disabled={isProcessing}
-              style={{
-                padding: '8px 16px',
-                fontSize: '13px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                borderColor: isWhatsApp ? '#86efac' : '#93c5fd',
-                color: isWhatsApp ? '#15803d' : '#1d4ed8',
-              }}
-            >
-              <Share2 size={15} />
-              <span>Share Directly</span>
-            </button>
-          )}
+          {/* Copy Message Button */}
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={handleCopyMessage}
+            disabled={isProcessing}
+            style={{
+              padding: '8px 14px',
+              fontSize: '13px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+            }}
+            title="Copy prefilled message to clipboard"
+          >
+            <Copy size={14} />
+            <span>Copy Message</span>
+          </button>
 
           {/* Primary Action Button */}
           <button
             type="button"
             className="btn btn-primary"
-            onClick={handleProceedStandardSend}
+            onClick={handleShareInvoice}
             disabled={isProcessing}
+            title={
+              !hasNativeShare
+                ? 'Automatic PDF attachment is not supported in this browser'
+                : isWhatsApp
+                ? 'Open native share sheet with attached invoice PDF for WhatsApp'
+                : 'Open native share sheet with attached invoice PDF for Email'
+            }
             style={{
               padding: '8px 18px',
               fontSize: '13px',
               display: 'flex',
               alignItems: 'center',
               gap: '8px',
-              background: isWhatsApp ? '#16a34a' : '#2563eb',
-              borderColor: isWhatsApp ? '#15803d' : '#1d4ed8',
+              background: !hasNativeShare ? '#64748b' : isWhatsApp ? '#16a34a' : '#2563eb',
+              borderColor: !hasNativeShare ? '#64748b' : isWhatsApp ? '#15803d' : '#1d4ed8',
             }}
           >
             {isProcessing ? (
               <>
                 <Loader2 size={15} className="spinner" />
-                <span>Generating PDF...</span>
+                <span>Preparing PDF & Sharing...</span>
               </>
             ) : (
               <>
                 {isWhatsApp ? <Send size={15} /> : <Mail size={15} />}
-                <span>{isWhatsApp ? 'Download PDF & Open WhatsApp' : 'Download PDF & Open Email'}</span>
+                <span>
+                  {!hasNativeShare
+                    ? isWhatsApp
+                      ? 'Send WhatsApp (Unsupported)'
+                      : 'Send Email (Unsupported)'
+                    : isWhatsApp
+                    ? 'Send WhatsApp'
+                    : 'Send Email'}
+                </span>
               </>
             )}
           </button>

@@ -86,10 +86,18 @@ export function isValidEmail(email?: string): boolean {
  * Checks if the current browser environment supports native file sharing (Web Share API Level 2)
  */
 export function canShareFiles(file?: File): boolean {
-  if (typeof navigator === 'undefined' || !navigator.canShare) return false;
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
+  if (typeof navigator.share !== 'function' || typeof navigator.canShare !== 'function') {
+    return false;
+  }
   try {
-    const testFile = file || new File(['test'], 'test.pdf', { type: 'application/pdf' });
-    return navigator.canShare({ files: [testFile] });
+    const testFile =
+      file ||
+      (typeof File !== 'undefined'
+        ? new File(['test'], 'invoice.pdf', { type: 'application/pdf' })
+        : null);
+    if (!testFile) return false;
+    return Boolean(navigator.canShare({ files: [testFile] }));
   } catch {
     return false;
   }
