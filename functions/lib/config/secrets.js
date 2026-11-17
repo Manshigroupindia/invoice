@@ -1,11 +1,13 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.DEFAULT_CALLBACK_URI = exports.ALLOWED_REDIRECT_URIS = exports.DRIVE_SCOPE = exports.REGION = exports.driveRefreshToken = exports.driveClientSecret = exports.driveClientId = void 0;
+exports.DEFAULT_CALLBACK_URI = exports.ALLOWED_REDIRECT_URIS = exports.DRIVE_SCOPE = exports.REGION = exports.sendgridApiKey = exports.whatsappCloudApiToken = exports.driveRefreshToken = exports.driveClientSecret = exports.driveClientId = void 0;
 exports.isAllowedRedirectUri = isAllowedRedirectUri;
 const params_1 = require("firebase-functions/params");
 exports.driveClientId = (0, params_1.defineSecret)('GOOGLE_DRIVE_CLIENT_ID');
 exports.driveClientSecret = (0, params_1.defineSecret)('GOOGLE_DRIVE_CLIENT_SECRET');
 exports.driveRefreshToken = (0, params_1.defineSecret)('GOOGLE_DRIVE_REFRESH_TOKEN');
+exports.whatsappCloudApiToken = (0, params_1.defineSecret)('WHATSAPP_CLOUD_API_TOKEN');
+exports.sendgridApiKey = (0, params_1.defineSecret)('SENDGRID_API_KEY');
 exports.REGION = 'asia-south1';
 exports.DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 /**

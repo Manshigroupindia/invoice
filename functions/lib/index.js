@@ -36,7 +36,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.googleDriveCallback = exports.googleDriveAuthUrl = void 0;
+exports.sendInvoiceEmail = exports.sendInvoiceWhatsApp = exports.googleDriveCallback = exports.googleDriveAuthUrl = void 0;
 const admin = __importStar(require("firebase-admin"));
 const https_1 = require("firebase-functions/v2/https");
 const cors_1 = __importDefault(require("cors"));
@@ -228,5 +228,128 @@ exports.googleDriveCallback = (0, https_1.onRequest)({
         </html>
       `);
     }
+});
+/**
+ * Endpoint 3: sendInvoiceWhatsApp
+ * Secure backend dispatch for WhatsApp Business Cloud API.
+ * Never exposes Meta system access tokens in frontend code.
+ */
+exports.sendInvoiceWhatsApp = (0, https_1.onRequest)({
+    region: secrets_1.REGION,
+    secrets: [secrets_1.whatsappCloudApiToken],
+    cors: true,
+}, async (req, res) => {
+    corsHandler(req, res, async () => {
+        if (req.method !== 'POST') {
+            res.status(405).json({ error: 'Method Not Allowed' });
+            return;
+        }
+        const { phoneNumber, message, filename, phoneNumberId } = req.body || {};
+        if (!phoneNumber) {
+            res.status(400).json({ error: 'Missing phoneNumber' });
+            return;
+        }
+        const token = secrets_1.whatsappCloudApiToken.value();
+        if (!token) {
+            res.status(503).json({
+                error: 'Integration Not Configured',
+                message: 'WhatsApp Business Cloud API token (WHATSAPP_CLOUD_API_TOKEN) is not configured in Firebase Secrets.',
+            });
+            return;
+        }
+        const activePhoneId = phoneNumberId || process.env.WHATSAPP_PHONE_NUMBER_ID;
+        if (!activePhoneId) {
+            res.status(400).json({
+                error: 'Missing Phone Number ID',
+                message: 'WhatsApp Phone Number ID is required.',
+            });
+            return;
+        }
+        try {
+            const cleanPhone = String(phoneNumber).replace(/\D/g, '');
+            const metaApiUrl = `https://graph.facebook.com/v19.0/${activePhoneId}/messages`;
+            const payload = {
+                messaging_product: 'whatsapp',
+                recipient_type: 'individual',
+                to: cleanPhone,
+                type: 'text',
+                text: { body: message || '' },
+            };
+            const metaResponse = await fetch(metaApiUrl, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(payload),
+            });
+            const metaData = await metaResponse.json();
+            if (!metaResponse.ok) {
+                res.status(metaResponse.status).json({
+                    error: 'WhatsApp API Error',
+                    details: metaData,
+                });
+                return;
+            }
+            await admin.firestore().collection('whatsappDispatches').add({
+                phoneNumber: cleanPhone,
+                filename: filename || 'invoice.pdf',
+                dispatchedAt: admin.firestore.FieldValue.serverTimestamp(),
+                status: 'sent',
+                metaResponse: metaData,
+            });
+            res.status(200).json({ success: true, result: metaData });
+        }
+        catch (err) {
+            const errorMsg = err instanceof Error ? err.message : 'Unknown error';
+            res.status(500).json({ error: 'WhatsApp Dispatch Failed', message: errorMsg });
+        }
+    });
+});
+/**
+ * Endpoint 4: sendInvoiceEmail
+ * Backend email dispatcher capable of attaching the generated PDF.
+ */
+exports.sendInvoiceEmail = (0, https_1.onRequest)({
+    region: secrets_1.REGION,
+    secrets: [secrets_1.sendgridApiKey],
+    cors: true,
+}, async (req, res) => {
+    corsHandler(req, res, async () => {
+        if (req.method !== 'POST') {
+            res.status(405).json({ error: 'Method Not Allowed' });
+            return;
+        }
+        const { to, subject, message, pdfBase64, filename, senderEmail } = req.body || {};
+        if (!to) {
+            res.status(400).json({ error: 'Missing recipient email' });
+            return;
+        }
+        try {
+            const mailDoc = await admin.firestore().collection('mail').add({
+                to,
+                from: senderEmail || 'billing@manshigroup.in',
+                message: {
+                    subject: subject || 'Invoice',
+                    text: message || '',
+                    attachments: pdfBase64
+                        ? [
+                            {
+                                filename: filename || 'invoice.pdf',
+                                content: pdfBase64,
+                                encoding: 'base64',
+                            },
+                        ]
+                        : [],
+                },
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+            res.status(200).json({ success: true, queueId: mailDoc.id });
+        }
+        catch (err) {
+            const errorMsg = err instanceof Error ? err.message : 'Unknown error';
+            res.status(500).json({ error: 'Email Dispatch Failed', message: errorMsg });
+        }
+    });
 });
 //# sourceMappingURL=index.js.map

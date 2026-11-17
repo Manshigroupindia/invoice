@@ -3,6 +3,8 @@ import { defineSecret } from 'firebase-functions/params';
 export const driveClientId = defineSecret('GOOGLE_DRIVE_CLIENT_ID');
 export const driveClientSecret = defineSecret('GOOGLE_DRIVE_CLIENT_SECRET');
 export const driveRefreshToken = defineSecret('GOOGLE_DRIVE_REFRESH_TOKEN');
+export const whatsappCloudApiToken = defineSecret('WHATSAPP_CLOUD_API_TOKEN');
+export const sendgridApiKey = defineSecret('SENDGRID_API_KEY');
 
 export const REGION = 'asia-south1';
 export const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';

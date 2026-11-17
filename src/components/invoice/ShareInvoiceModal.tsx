@@ -9,13 +9,13 @@ import {
   Phone,
   Loader2,
   Copy,
+  Settings as SettingsIcon,
 } from 'lucide-react';
 import type { InvoiceRecord, CompanySettings, ClientRecord } from '../../types';
 import {
   interpolateInvoiceTemplate,
   cleanIndianMobileNumber,
   isValidEmail,
-  canShareFiles,
 } from '../../utils/shareInvoice';
 import {
   formatDefaultPdfFilename,
@@ -27,6 +27,14 @@ import {
   DEFAULT_EMAIL_SUBJECT_TEMPLATE,
   DEFAULT_EMAIL_BODY_TEMPLATE,
 } from '../../services/firestoreService';
+import {
+  isWhatsAppApiConfigured,
+  sendInvoiceViaWhatsAppApi,
+} from '../../services/whatsappService';
+import {
+  isEmailServiceConfigured,
+  sendInvoiceViaBackendEmail,
+} from '../../services/emailService';
 
 export interface ShareInvoiceModalProps {
   isOpen: boolean;
@@ -41,6 +49,19 @@ export interface ShareInvoiceModalProps {
   ) => Promise<void>;
   onSuccessToast: (msg: string) => void;
   onErrorToast: (msg: string) => void;
+}
+
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const dataUrl = (reader.result as string) || '';
+      const base64 = dataUrl.split(',')[1] || '';
+      resolve(base64);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
 }
 
 export const ShareInvoiceModal: React.FC<ShareInvoiceModalProps> = ({
@@ -78,13 +99,14 @@ export const ShareInvoiceModal: React.FC<ShareInvoiceModalProps> = ({
   const [isProcessing, setIsProcessing] = useState(false);
   const [contactError, setContactError] = useState<string | null>(null);
 
-  // Capability state: check if Web Share API with file sharing is supported
-  const [hasNativeShare, setHasNativeShare] = useState<boolean>(() => canShareFiles());
+  const isWhatsApp = channel === 'whatsapp';
+  const isApiConfigured = isWhatsApp
+    ? isWhatsAppApiConfigured(companySettings)
+    : isEmailServiceConfigured(companySettings);
 
-  // Re-check capability and initialize state whenever modal opens or invoice/channel changes
+  // Initialize state whenever modal opens or invoice/channel changes
   useEffect(() => {
     if (isOpen && invoice) {
-      setHasNativeShare(canShareFiles());
       const activeSettings = companySettings || undefined;
 
       // 1. Resolve Mobile Number
@@ -125,8 +147,6 @@ export const ShareInvoiceModal: React.FC<ShareInvoiceModalProps> = ({
   }, [isOpen, invoice, channel, companySettings, linkedClient]);
 
   if (!isOpen || !invoice) return null;
-
-  const isWhatsApp = channel === 'whatsapp';
 
   // Validate Contact Information
   const validateContact = (): { valid: boolean; cleanContact: string; error?: string } => {
@@ -170,84 +190,72 @@ export const ShareInvoiceModal: React.FC<ShareInvoiceModalProps> = ({
     }
   };
 
-  // Handle Share Action using Web Share API with File Attachment
-  const handleShareInvoice = async () => {
+  // Primary Dispatch Action
+  const handleDispatch = async () => {
     setContactError(null);
+
+    // 1. Verify that the required backend integration is active
+    if (!isApiConfigured) {
+      const errorMsg = isWhatsApp
+        ? 'Direct PDF attachment requires the WhatsApp Business Cloud API. Please configure your Meta credentials in Settings.'
+        : 'Automatic PDF attachment requires Backend Email Integration. Please enable Backend Email Service in Settings.';
+      setContactError(errorMsg);
+      onErrorToast(errorMsg);
+      return;
+    }
+
+    // 2. Validate recipient contact
     const check = validateContact();
     if (!check.valid) {
       setContactError(check.error || 'Invalid contact details.');
       return;
     }
 
-    // Check Web Share API file sharing support upfront
-    if (!canShareFiles()) {
-      const fallbackMsg =
-        'Automatic PDF attachment via Web Share is not supported in this browser or device. Direct sharing requires a browser with Web Share file support (e.g., Google Chrome, Microsoft Edge, Safari, or a mobile browser on Android / iOS).';
-      setContactError(fallbackMsg);
-      onErrorToast('Automatic PDF attachment is not supported in this browser.');
-      return;
-    }
-
     try {
       setIsProcessing(true);
 
-      // 1. Save contact to client record if selected
+      // 3. Save contact to client record if selected
       await maybePersistContact();
 
-      // 2. Generate PDF purely in memory (Blob/File) WITHOUT triggering a separate download
+      // 4. Generate PDF purely in memory (Blob -> Base64) without separate download
       const activeSettings = companySettings || undefined;
       const { blob } = await getInvoicePDFBlob(invoice, activeSettings);
       const safeFilename = sanitizePdfFilename(filenameInput);
-      const pdfFile = new File([blob], safeFilename, { type: 'application/pdf' });
-
-      // 3. Verify that the browser can share this specific file
-      if (
-        typeof navigator === 'undefined' ||
-        typeof navigator.canShare !== 'function' ||
-        !navigator.canShare({ files: [pdfFile] })
-      ) {
-        throw new Error(
-          'Your browser does not support attaching this PDF file directly via the Web Share API.'
-        );
-      }
-
-      // 4. Automatically copy recipient contact info to clipboard for quick access in the app
-      if (check.cleanContact && typeof navigator.clipboard?.writeText === 'function') {
-        try {
-          await navigator.clipboard.writeText(check.cleanContact);
-        } catch {
-          // Clipboard write failure is non-fatal
-        }
-      }
-
-      // 5. Build native ShareData payload with the attached PDF File
-      const shareData: ShareData = {
-        files: [pdfFile],
-        title: isWhatsApp ? safeFilename : subjectText,
-        text: messageText,
-      };
-
-      // 6. Open native sharing sheet with attached PDF
-      await navigator.share(shareData);
+      const pdfBase64 = await blobToBase64(blob);
 
       if (isWhatsApp) {
+        // Dispatch via WhatsApp Business Cloud API
+        await sendInvoiceViaWhatsAppApi({
+          phoneNumber: check.cleanContact,
+          message: messageText,
+          pdfBase64,
+          filename: safeFilename,
+          companySettings,
+        });
+
         onSuccessToast(
-          `Share menu opened for invoice ${invoice.invoiceNumber}. Select WhatsApp to send with attached PDF!`
+          `Invoice PDF successfully sent to +${check.cleanContact} via WhatsApp Business Cloud API!`
         );
       } else {
+        // Dispatch via Backend Email Service
+        await sendInvoiceViaBackendEmail({
+          to: check.cleanContact,
+          subject: subjectText,
+          message: messageText,
+          pdfBase64,
+          filename: safeFilename,
+          companySettings,
+        });
+
         onSuccessToast(
-          `Share menu opened for invoice ${invoice.invoiceNumber}. Recipient (${check.cleanContact}) copied to clipboard!`
+          `Invoice email with attached PDF successfully queued for ${check.cleanContact}!`
         );
       }
 
       onClose();
     } catch (err: unknown) {
-      if ((err as Error)?.name === 'AbortError') {
-        // User dismissed the native share sheet - do not show an error toast
-        setIsProcessing(false);
-        return;
-      }
-      const msg = err instanceof Error ? err.message : 'Share failed';
+      const msg = err instanceof Error ? err.message : 'Failed to send invoice';
+      setContactError(msg);
       onErrorToast(msg);
     } finally {
       setIsProcessing(false);
@@ -276,7 +284,7 @@ export const ShareInvoiceModal: React.FC<ShareInvoiceModalProps> = ({
     >
       <div
         className="modal-container"
-        style={{ maxWidth: '580px', width: '100%', margin: 'auto' }}
+        style={{ maxWidth: '600px', width: '100%', margin: 'auto' }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -367,30 +375,90 @@ export const ShareInvoiceModal: React.FC<ShareInvoiceModalProps> = ({
             </div>
           )}
 
-          {/* Fallback Banner: When Web Share API file sharing is unavailable */}
-          {!hasNativeShare && (
+          {/* Integration Status & Architectural Limitation Banner */}
+          {!isApiConfigured ? (
             <div
               style={{
                 background: '#fffbeb',
                 border: '1px solid #fde68a',
                 borderRadius: '8px',
-                padding: '12px 14px',
+                padding: '14px 16px',
                 fontSize: '12.5px',
                 color: '#92400e',
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '6px',
+                gap: '8px',
               }}
             >
               <div style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <AlertCircle size={16} color="#d97706" style={{ flexShrink: 0 }} />
-                <span>Automatic PDF Attachment Not Supported in this Browser</span>
+                <AlertCircle size={17} color="#d97706" style={{ flexShrink: 0 }} />
+                <span>
+                  {isWhatsApp
+                    ? 'Direct WhatsApp PDF Attachment Requires WhatsApp Business Cloud API'
+                    : 'Automatic Email PDF Attachment Requires Backend Email Integration'}
+                </span>
               </div>
-              <div style={{ lineHeight: 1.45, color: '#b45309' }}>
-                Your current browser or device does not support the Web Share API with file attachments (<code>navigator.canShare</code>). Automatic PDF attachment cannot be performed in this environment.
+              <div style={{ lineHeight: 1.5, color: '#b45309' }}>
+                {isWhatsApp ? (
+                  <>
+                    Web browsers cannot directly attach local files to WhatsApp chats via web links (<code>wa.me</code> only supports plain text). To send invoices with PDFs automatically attached directly to client numbers without manual interaction, the <strong>WhatsApp Business Cloud API</strong> must be configured in Settings.
+                  </>
+                ) : (
+                  <>
+                    Web browsers cannot attach local PDF files to desktop email applications via <code>mailto:</code> links due to RFC 6068 email protocol security rules. To send invoices with PDFs automatically attached directly to clients, the <strong>Backend Email Integration</strong> must be enabled in Settings.
+                  </>
+                )}
               </div>
-              <div style={{ fontSize: '12px', color: '#78350f', lineHeight: 1.4 }}>
-                <strong>To share invoices with automatically attached PDFs:</strong> Please open this portal in a supported browser such as <strong>Google Chrome</strong>, <strong>Microsoft Edge</strong>, <strong>Safari</strong>, or a mobile browser on Android / iOS.
+              <div
+                style={{
+                  fontSize: '12px',
+                  color: '#78350f',
+                  lineHeight: 1.45,
+                  paddingTop: '6px',
+                  borderTop: '1px dashed #fde68a',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}
+              >
+                <SettingsIcon size={14} color="#d97706" />
+                <span>
+                  Opening an incomplete chat or email without the PDF is disabled. Please configure this integration in <strong>Settings</strong> to enable direct delivery.
+                </span>
+              </div>
+            </div>
+          ) : (
+            <div
+              style={{
+                background: '#f0fdf4',
+                border: '1px solid #bbf7d0',
+                borderRadius: '8px',
+                padding: '12px 14px',
+                fontSize: '12px',
+                color: '#166534',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '4px',
+              }}
+            >
+              <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <CheckCircle2 size={15} color="#16a34a" />
+                <span>
+                  {isWhatsApp
+                    ? 'WhatsApp Business Cloud API Connected'
+                    : 'Backend Email Integration Active'}
+                </span>
+              </div>
+              <div style={{ lineHeight: 1.45, color: '#15803d' }}>
+                {isWhatsApp ? (
+                  <>
+                    Clicking <strong>Send WhatsApp</strong> will generate the invoice PDF in memory and dispatch it directly to <strong>{mobileInput || 'the client'}</strong> via the WhatsApp Business Cloud API.
+                  </>
+                ) : (
+                  <>
+                    Clicking <strong>Send Email</strong> will generate the invoice PDF in memory and dispatch it directly to <strong>{emailInput || 'the client'}</strong> with the PDF attached automatically.
+                  </>
+                )}
               </div>
             </div>
           )}
@@ -536,39 +604,6 @@ export const ShareInvoiceModal: React.FC<ShareInvoiceModalProps> = ({
               />
             </div>
           </div>
-
-          {/* Sharing How-It-Works Card: When Web Share is available */}
-          {hasNativeShare && (
-            <div
-              style={{
-                background: '#f0fdf4',
-                border: '1px solid #bbf7d0',
-                borderRadius: '8px',
-                padding: '12px 14px',
-                fontSize: '12px',
-                color: '#166534',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '4px',
-              }}
-            >
-              <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <CheckCircle2 size={14} color="#16a34a" />
-                <span>Direct PDF Attachment via Web Share:</span>
-              </div>
-              <div style={{ lineHeight: 1.45, color: '#15803d' }}>
-                {isWhatsApp ? (
-                  <>
-                    Clicking <strong>Send WhatsApp</strong> generates the invoice PDF in memory and opens your device's native share menu with the PDF already attached and message prefilled. Simply select <strong>WhatsApp</strong> to send directly.
-                  </>
-                ) : (
-                  <>
-                    Clicking <strong>Send Email</strong> generates the invoice PDF in memory and opens your device's native share menu with the PDF already attached, subject, and message prefilled. The recipient's email ({emailInput || 'saved email'}) is copied to your clipboard so you can paste it into the recipient field.
-                  </>
-                )}
-              </div>
-            </div>
-          )}
         </div>
 
         {/* Footer */}
@@ -616,14 +651,16 @@ export const ShareInvoiceModal: React.FC<ShareInvoiceModalProps> = ({
           <button
             type="button"
             className="btn btn-primary"
-            onClick={handleShareInvoice}
-            disabled={isProcessing}
+            onClick={handleDispatch}
+            disabled={isProcessing || !isApiConfigured}
             title={
-              !hasNativeShare
-                ? 'Automatic PDF attachment is not supported in this browser'
+              !isApiConfigured
+                ? isWhatsApp
+                  ? 'WhatsApp Business Cloud API is not configured in Settings'
+                  : 'Backend Email Service is not configured in Settings'
                 : isWhatsApp
-                ? 'Open native share sheet with attached invoice PDF for WhatsApp'
-                : 'Open native share sheet with attached invoice PDF for Email'
+                ? 'Send invoice PDF via WhatsApp Business Cloud API'
+                : 'Send invoice PDF via Backend Email Service'
             }
             style={{
               padding: '8px 18px',
@@ -631,23 +668,24 @@ export const ShareInvoiceModal: React.FC<ShareInvoiceModalProps> = ({
               display: 'flex',
               alignItems: 'center',
               gap: '8px',
-              background: !hasNativeShare ? '#64748b' : isWhatsApp ? '#16a34a' : '#2563eb',
-              borderColor: !hasNativeShare ? '#64748b' : isWhatsApp ? '#15803d' : '#1d4ed8',
+              background: !isApiConfigured ? '#64748b' : isWhatsApp ? '#16a34a' : '#2563eb',
+              borderColor: !isApiConfigured ? '#64748b' : isWhatsApp ? '#15803d' : '#1d4ed8',
+              cursor: !isApiConfigured ? 'not-allowed' : 'pointer',
             }}
           >
             {isProcessing ? (
               <>
                 <Loader2 size={15} className="spinner" />
-                <span>Preparing PDF & Sharing...</span>
+                <span>Generating & Sending...</span>
               </>
             ) : (
               <>
                 {isWhatsApp ? <Send size={15} /> : <Mail size={15} />}
                 <span>
-                  {!hasNativeShare
+                  {!isApiConfigured
                     ? isWhatsApp
-                      ? 'Send WhatsApp (Unsupported)'
-                      : 'Send Email (Unsupported)'
+                      ? 'WhatsApp API Not Configured'
+                      : 'Email Service Not Configured'
                     : isWhatsApp
                     ? 'Send WhatsApp'
                     : 'Send Email'}

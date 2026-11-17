@@ -41,6 +41,14 @@ export interface CompanySettings {
   whatsappTemplate?: string; // Message template for WhatsApp sharing
   emailSubjectTemplate?: string; // Subject template for Email sharing
   emailBodyTemplate?: string; // Body template for Email sharing
+  // WhatsApp Business Cloud API Integration
+  whatsappApiEnabled?: boolean;
+  whatsappPhoneNumberId?: string; // Meta Phone Number ID (safe identifier)
+  whatsappBusinessAccountId?: string; // WABA ID
+  // Backend Email Service Integration
+  emailServiceEnabled?: boolean;
+  emailProvider?: 'firebase_extension' | 'smtp' | 'sendgrid';
+  emailSenderAddress?: string; // Sender email address (e.g. billing@manshigroup.in)
 }
 
 export interface InvoiceLineItem {

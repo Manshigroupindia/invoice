@@ -70,6 +70,12 @@ export const DEFAULT_SETTINGS: CompanySettings = {
   whatsappTemplate: DEFAULT_WHATSAPP_TEMPLATE,
   emailSubjectTemplate: DEFAULT_EMAIL_SUBJECT_TEMPLATE,
   emailBodyTemplate: DEFAULT_EMAIL_BODY_TEMPLATE,
+  whatsappApiEnabled: false,
+  whatsappPhoneNumberId: '',
+  whatsappBusinessAccountId: '',
+  emailServiceEnabled: false,
+  emailProvider: 'firebase_extension',
+  emailSenderAddress: 'Info@Manshigroup.in',
 };
 
 // Document references
@@ -105,6 +111,12 @@ export function normalizeCompanySettings(data: Partial<CompanySettings>): Compan
     whatsappTemplate: data.whatsappTemplate !== undefined ? data.whatsappTemplate : DEFAULT_WHATSAPP_TEMPLATE,
     emailSubjectTemplate: data.emailSubjectTemplate !== undefined ? data.emailSubjectTemplate : DEFAULT_EMAIL_SUBJECT_TEMPLATE,
     emailBodyTemplate: data.emailBodyTemplate !== undefined ? data.emailBodyTemplate : DEFAULT_EMAIL_BODY_TEMPLATE,
+    whatsappApiEnabled: Boolean(data.whatsappApiEnabled),
+    whatsappPhoneNumberId: data.whatsappPhoneNumberId || '',
+    whatsappBusinessAccountId: data.whatsappBusinessAccountId || '',
+    emailServiceEnabled: Boolean(data.emailServiceEnabled),
+    emailProvider: data.emailProvider || 'firebase_extension',
+    emailSenderAddress: data.emailSenderAddress || 'Info@Manshigroup.in',
   };
 }
 

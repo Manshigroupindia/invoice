@@ -121,7 +121,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
     }
   };
 
-  const handleInputChange = (field: keyof CompanySettings, value: string | number) => {
+  const handleInputChange = (field: keyof CompanySettings, value: string | number | boolean) => {
     setSettings((prev) => ({
       ...prev,
       [field]: value,
@@ -947,6 +947,180 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                   style={{ fontSize: '13px', lineHeight: 1.5, fontFamily: 'inherit' }}
                 />
                 <div className="form-hint">Prefills your email compose window when sending an invoice.</div>
+              </div>
+            </div>
+          </div>
+
+          {/* 6. WhatsApp Business Cloud API Integration */}
+          <div className="ui-card">
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', borderBottom: '1px solid #f1f5f9', paddingBottom: '12px', flexWrap: 'wrap', gap: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <Send size={20} color="#16a34a" />
+                <div>
+                  <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a' }}>WhatsApp Business Cloud API Integration</h3>
+                  <div style={{ fontSize: '12.5px', color: '#64748b' }}>Required for automated direct invoice PDF delivery to clients' WhatsApp numbers.</div>
+                </div>
+              </div>
+              <div style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '4px 10px',
+                borderRadius: '20px',
+                fontSize: '12px',
+                fontWeight: 600,
+                background: settings.whatsappApiEnabled && settings.whatsappPhoneNumberId ? '#f0fdf4' : '#fffbeb',
+                color: settings.whatsappApiEnabled && settings.whatsappPhoneNumberId ? '#15803d' : '#b45309',
+                border: `1px solid ${settings.whatsappApiEnabled && settings.whatsappPhoneNumberId ? '#bbf7d0' : '#fde68a'}`,
+              }}>
+                {settings.whatsappApiEnabled && settings.whatsappPhoneNumberId ? <CheckCircle2 size={13} color="#16a34a" /> : <AlertCircle size={13} color="#d97706" />}
+                <span>{settings.whatsappApiEnabled && settings.whatsappPhoneNumberId ? 'Configured & Active' : 'Setup Required'}</span>
+              </div>
+            </div>
+
+            <div style={{
+              background: '#f8fafc',
+              border: '1px solid #e2e8f0',
+              borderRadius: '8px',
+              padding: '12px 16px',
+              marginBottom: '16px',
+              fontSize: '12.5px',
+              color: '#475569',
+              lineHeight: 1.5,
+            }}>
+              <strong>Why is this required?</strong> Web browsers cannot directly attach local binary files to WhatsApp Web or desktop chats through URL links (<code>wa.me</code> only accepts plain text). The official Meta WhatsApp Business Cloud API provides direct server-to-server delivery with attached PDF documents.
+            </div>
+
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: 600, color: '#0f172a', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={Boolean(settings.whatsappApiEnabled)}
+                  onChange={(e) => handleInputChange('whatsappApiEnabled', e.target.checked)}
+                />
+                <span>Enable WhatsApp Business Cloud API Integration</span>
+              </label>
+            </div>
+
+            <div className="settings-grid-2">
+              <div className="form-group">
+                <label className="form-label">WhatsApp Phone Number ID</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder="e.g. 109876543210987"
+                  value={settings.whatsappPhoneNumberId || ''}
+                  onChange={(e) => handleInputChange('whatsappPhoneNumberId', e.target.value)}
+                  disabled={!settings.whatsappApiEnabled}
+                />
+                <div className="form-hint">Obtained from Meta for Developers &gt; WhatsApp &gt; API Setup.</div>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">WhatsApp Business Account ID (WABA ID)</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder="e.g. 101234567890123"
+                  value={settings.whatsappBusinessAccountId || ''}
+                  onChange={(e) => handleInputChange('whatsappBusinessAccountId', e.target.value)}
+                  disabled={!settings.whatsappApiEnabled}
+                />
+                <div className="form-hint">Your Meta WhatsApp Business Account ID.</div>
+              </div>
+            </div>
+
+            <div style={{
+              background: '#eff6ff',
+              border: '1px solid #bfdbfe',
+              borderRadius: '8px',
+              padding: '10px 14px',
+              fontSize: '12px',
+              color: '#1e40af',
+              lineHeight: 1.45,
+            }}>
+              <strong>Security Architecture:</strong> For your protection, your Meta System User Access Token is securely stored in Firebase Secrets (<code>WHATSAPP_CLOUD_API_TOKEN</code>) and is never exposed in browser frontend code.
+            </div>
+          </div>
+
+          {/* 7. Backend Email Service Integration */}
+          <div className="ui-card">
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', borderBottom: '1px solid #f1f5f9', paddingBottom: '12px', flexWrap: 'wrap', gap: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <Mail size={20} color="#2563eb" />
+                <div>
+                  <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a' }}>Backend Email Service Integration</h3>
+                  <div style={{ fontSize: '12.5px', color: '#64748b' }}>Enables automatic email sending with attached invoice PDFs directly to client inboxes.</div>
+                </div>
+              </div>
+              <div style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '4px 10px',
+                borderRadius: '20px',
+                fontSize: '12px',
+                fontWeight: 600,
+                background: settings.emailServiceEnabled ? '#f0fdf4' : '#fffbeb',
+                color: settings.emailServiceEnabled ? '#15803d' : '#b45309',
+                border: `1px solid ${settings.emailServiceEnabled ? '#bbf7d0' : '#fde68a'}`,
+              }}>
+                {settings.emailServiceEnabled ? <CheckCircle2 size={13} color="#16a34a" /> : <AlertCircle size={13} color="#d97706" />}
+                <span>{settings.emailServiceEnabled ? 'Active & Ready' : 'Setup Required'}</span>
+              </div>
+            </div>
+
+            <div style={{
+              background: '#f8fafc',
+              border: '1px solid #e2e8f0',
+              borderRadius: '8px',
+              padding: '12px 16px',
+              marginBottom: '16px',
+              fontSize: '12.5px',
+              color: '#475569',
+              lineHeight: 1.5,
+            }}>
+              <strong>RFC 6068 Standard Compliance:</strong> Web browser links (<code>mailto:</code>) are strictly prohibited by internet email standards from attaching local binary files. This backend email integration attaches the generated invoice PDF and dispatches it directly.
+            </div>
+
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: 600, color: '#0f172a', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={Boolean(settings.emailServiceEnabled)}
+                  onChange={(e) => handleInputChange('emailServiceEnabled', e.target.checked)}
+                />
+                <span>Enable Backend Email Service Integration</span>
+              </label>
+            </div>
+
+            <div className="settings-grid-2">
+              <div className="form-group">
+                <label className="form-label">Email Dispatch Provider</label>
+                <select
+                  className="form-input"
+                  value={settings.emailProvider || 'firebase_extension'}
+                  onChange={(e) => handleInputChange('emailProvider', e.target.value)}
+                  disabled={!settings.emailServiceEnabled}
+                >
+                  <option value="firebase_extension">Firebase Email Extension (Firestore 'mail' Queue)</option>
+                  <option value="smtp">Direct SMTP Server (Cloud Function)</option>
+                  <option value="sendgrid">SendGrid API (Cloud Function)</option>
+                </select>
+                <div className="form-hint">Standard Firebase email delivery architecture.</div>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Sender Email Address ("From")</label>
+                <input
+                  type="email"
+                  className="form-input"
+                  placeholder="e.g. billing@manshigroup.in"
+                  value={settings.emailSenderAddress || settings.email || ''}
+                  onChange={(e) => handleInputChange('emailSenderAddress', e.target.value)}
+                  disabled={!settings.emailServiceEnabled}
+                />
+                <div className="form-hint">The email address your clients will see in the From field.</div>
               </div>
             </div>
           </div>

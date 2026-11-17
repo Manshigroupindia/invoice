@@ -74,6 +74,20 @@ service cloud.firestore {
       allow delete: if isAuthenticated() || request.time < timestamp.date(2026, 12, 31);
     }
 
+    // 6. Mail queue collection (Firebase Email Extension / Backend Delivery)
+    match /mail/{mailId} {
+      allow read: if isAuthenticated() || request.time < timestamp.date(2026, 12, 31);
+      allow create: if isAuthenticated() || request.time < timestamp.date(2026, 12, 31);
+      allow update, delete: if false;
+    }
+
+    // 7. WhatsApp Dispatches log
+    match /whatsappDispatches/{dispatchId} {
+      allow read: if isAuthenticated() || request.time < timestamp.date(2026, 12, 31);
+      allow create: if isAuthenticated() || request.time < timestamp.date(2026, 12, 31);
+      allow update, delete: if false;
+    }
+
     // 5. Internal Server-Only Security Collections: NEVER accessible to clients
     match /_oauthPendingStates/{stateId} {
       allow read, write: if false; // Private to Cloud Functions Admin SDK
