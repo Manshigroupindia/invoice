@@ -784,6 +784,15 @@ export function formatDefaultPdfFilename(
   return `${customer} ${typeLabel}.pdf`;
 }
 
+export async function getInvoicePDFBlob(
+  invoice: InvoiceRecord,
+  companySettings?: CompanySettings
+): Promise<{ blob: Blob; doc: jsPDF }> {
+  const doc = await createInvoicePDFDocument(invoice, companySettings);
+  const blob = doc.output('blob');
+  return { blob, doc };
+}
+
 export async function downloadInvoicePDF(
   invoice: InvoiceRecord,
   companySettings?: CompanySettings,

@@ -15,6 +15,9 @@ import {
   CheckCircle2,
   Lock,
   KeyRound,
+  MessageSquare,
+  Send,
+  Mail,
 } from 'lucide-react';
 import type { CompanySettings } from '../types';
 import {
@@ -22,6 +25,9 @@ import {
   saveCompanySettingsFirestore,
   updateAppPinFirestore,
   DEFAULT_SETTINGS,
+  DEFAULT_WHATSAPP_TEMPLATE,
+  DEFAULT_EMAIL_SUBJECT_TEMPLATE,
+  DEFAULT_EMAIL_BODY_TEMPLATE,
 } from '../services/firestoreService';
 import { uploadBrandAsset, validateImageUrl } from '../services/storageService';
 import { runLocalToFirestoreMigration } from '../services/migrationService';
@@ -816,7 +822,136 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
             </div>
           </div>
 
-          {/* 5. Google Drive Backup Integration */}
+          {/* 5. Invoice Message Settings (WhatsApp & Email Templates) */}
+          <div className="ui-card">
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', borderBottom: '1px solid #f1f5f9', paddingBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <MessageSquare size={20} color="#1e3a8a" />
+                <div>
+                  <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a' }}>Invoice Message Settings</h3>
+                  <div style={{ fontSize: '12.5px', color: '#64748b' }}>Configure reusable message templates for sharing invoices via WhatsApp and Email.</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Placeholders Guide */}
+            <div style={{
+              background: '#f8fafc',
+              border: '1px solid #e2e8f0',
+              borderRadius: '8px',
+              padding: '12px 16px',
+              marginBottom: '20px',
+            }}>
+              <div style={{ fontSize: '12px', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                Supported Dynamic Placeholders:
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                {['{CustomerName}', '{InvoiceNumber}', '{InvoiceDate}', '{InvoiceAmount}', '{CompanyName}'].map((ph) => (
+                  <span
+                    key={ph}
+                    style={{
+                      display: 'inline-block',
+                      background: '#ffffff',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '4px',
+                      padding: '2px 8px',
+                      fontSize: '11.5px',
+                      fontFamily: 'monospace',
+                      fontWeight: 600,
+                      color: '#1e3a8a',
+                    }}
+                  >
+                    {ph}
+                  </span>
+                ))}
+              </div>
+              <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '6px' }}>
+                These tags will automatically be replaced with actual invoice details whenever you send an invoice.
+              </div>
+            </div>
+
+            {/* WhatsApp Message Template */}
+            <div style={{ marginBottom: '24px', borderBottom: '1px solid #f1f5f9', paddingBottom: '20px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Send size={16} color="#16a34a" />
+                  <label className="form-label" style={{ fontWeight: 600, margin: 0, fontSize: '13.5px', color: '#0f172a' }}>
+                    WhatsApp Message Template
+                  </label>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  style={{ padding: '4px 10px', fontSize: '11px', height: 'auto' }}
+                  onClick={() => handleInputChange('whatsappTemplate', DEFAULT_WHATSAPP_TEMPLATE)}
+                >
+                  Reset to Default
+                </button>
+              </div>
+              <textarea
+                className="form-textarea"
+                rows={5}
+                value={settings.whatsappTemplate !== undefined ? settings.whatsappTemplate : DEFAULT_WHATSAPP_TEMPLATE}
+                onChange={(e) => handleInputChange('whatsappTemplate', e.target.value)}
+                placeholder="Enter WhatsApp message template..."
+                style={{ fontSize: '13px', lineHeight: 1.5, fontFamily: 'inherit' }}
+              />
+              <div className="form-hint">This text will be prefilled in WhatsApp Web and WhatsApp Desktop app.</div>
+            </div>
+
+            {/* Email Templates */}
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Mail size={16} color="#2563eb" />
+                  <label className="form-label" style={{ fontWeight: 600, margin: 0, fontSize: '13.5px', color: '#0f172a' }}>
+                    Email Message Templates
+                  </label>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  style={{ padding: '4px 10px', fontSize: '11px', height: 'auto' }}
+                  onClick={() => {
+                    handleInputChange('emailSubjectTemplate', DEFAULT_EMAIL_SUBJECT_TEMPLATE);
+                    handleInputChange('emailBodyTemplate', DEFAULT_EMAIL_BODY_TEMPLATE);
+                  }}
+                >
+                  Reset to Default
+                </button>
+              </div>
+
+              <div className="form-group" style={{ marginBottom: '14px' }}>
+                <label className="form-label" style={{ fontSize: '12.5px', fontWeight: 600 }}>
+                  Email Subject Template
+                </label>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={settings.emailSubjectTemplate !== undefined ? settings.emailSubjectTemplate : DEFAULT_EMAIL_SUBJECT_TEMPLATE}
+                  onChange={(e) => handleInputChange('emailSubjectTemplate', e.target.value)}
+                  placeholder="e.g. Invoice {InvoiceNumber} - {CompanyName}"
+                />
+              </div>
+
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label" style={{ fontSize: '12.5px', fontWeight: 600 }}>
+                  Email Body Template
+                </label>
+                <textarea
+                  className="form-textarea"
+                  rows={6}
+                  value={settings.emailBodyTemplate !== undefined ? settings.emailBodyTemplate : DEFAULT_EMAIL_BODY_TEMPLATE}
+                  onChange={(e) => handleInputChange('emailBodyTemplate', e.target.value)}
+                  placeholder="Enter email body template..."
+                  style={{ fontSize: '13px', lineHeight: 1.5, fontFamily: 'inherit' }}
+                />
+                <div className="form-hint">Prefills your email compose window when sending an invoice.</div>
+              </div>
+            </div>
+          </div>
+
+          {/* 6. Google Drive Backup Integration */}
           <div className="ui-card">
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', borderBottom: '1px solid #f1f5f9', paddingBottom: '12px', flexWrap: 'wrap', gap: '12px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>

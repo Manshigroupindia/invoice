@@ -58,7 +58,7 @@ export function normalizeGstin(gstin?: string): string {
  */
 export function isDuplicateClient(
   existing: ClientRecord,
-  candidate: { companyName: string; mobile?: string; gstin?: string; id?: string }
+  candidate: { companyName: string; mobile?: string; email?: string; gstin?: string; id?: string }
 ): boolean {
   if (candidate.id && existing.id === candidate.id) {
     return false;
@@ -81,6 +81,19 @@ export function isDuplicateClient(
   const candidateMobile = normalizeMobile(candidate.mobile);
   if (existingMobile && candidateMobile && existingMobile.length === 10 && existingMobile === candidateMobile) {
     // If mobile matches and names share substantial similarity
+    if (
+      existingNormName.includes(candidateNormName) ||
+      candidateNormName.includes(existingNormName)
+    ) {
+      return true;
+    }
+  }
+
+  if (
+    existing.email &&
+    candidate.email &&
+    existing.email.trim().toLowerCase() === candidate.email.trim().toLowerCase()
+  ) {
     if (
       existingNormName.includes(candidateNormName) ||
       candidateNormName.includes(existingNormName)
@@ -152,6 +165,7 @@ export async function saveClientFirestore(
     companyName: (client.companyName || '').trim(),
     address: (client.address || '').trim(),
     mobile: client.mobile ? client.mobile.trim() : '',
+    email: client.email ? client.email.trim() : '',
     gstin: client.gstin ? client.gstin.trim().toUpperCase() : '',
     createdAt: isExisting ? (existingSnap.data() as ClientRecord).createdAt || now : client.createdAt || now,
     updatedAt: now,
@@ -276,6 +290,7 @@ export async function updateClientAndSyncInvoices(
           customerName: savedClient.companyName.trim(),
           customerAddress: savedClient.address.trim(),
           customerMobile: savedClient.mobile ? savedClient.mobile.trim() : '',
+          customerEmail: savedClient.email ? savedClient.email.trim() : '',
           customerGstin: savedClient.gstin ? savedClient.gstin.trim().toUpperCase() : '',
           updatedAt: now,
         };
@@ -317,6 +332,7 @@ export async function syncClientsFromInvoices(
     if (!rawName || !rawAddress) continue;
 
     const rawMobile = inv.customerMobile ? inv.customerMobile.trim() : '';
+    const rawEmail = inv.customerEmail ? inv.customerEmail.trim() : '';
     const rawGstin = inv.customerGstin ? inv.customerGstin.trim().toUpperCase() : '';
 
     // Find if already exists
@@ -324,6 +340,7 @@ export async function syncClientsFromInvoices(
       isDuplicateClient(c, {
         companyName: rawName,
         mobile: rawMobile,
+        email: rawEmail,
         gstin: rawGstin,
       })
     );
@@ -335,6 +352,10 @@ export async function syncClientsFromInvoices(
 
       if (!match.mobile && rawMobile) {
         enriched.mobile = rawMobile;
+        needsUpdate = true;
+      }
+      if (!match.email && rawEmail) {
+        enriched.email = rawEmail;
         needsUpdate = true;
       }
       if (!match.gstin && rawGstin) {
@@ -359,6 +380,7 @@ export async function syncClientsFromInvoices(
         companyName: rawName,
         address: rawAddress,
         mobile: rawMobile,
+        email: rawEmail,
         gstin: rawGstin,
       });
       existingClients.push(newClient);
@@ -378,6 +400,7 @@ export async function autoUpsertClientFromInvoice(invoice: InvoiceRecord): Promi
   if (!rawName) return null;
 
   const rawMobile = invoice.customerMobile ? invoice.customerMobile.trim() : '';
+  const rawEmail = invoice.customerEmail ? invoice.customerEmail.trim() : '';
   const rawGstin = invoice.customerGstin ? invoice.customerGstin.trim().toUpperCase() : '';
 
   try {
@@ -387,6 +410,7 @@ export async function autoUpsertClientFromInvoice(invoice: InvoiceRecord): Promi
       isDuplicateClient(c, {
         companyName: rawName,
         mobile: rawMobile,
+        email: rawEmail,
         gstin: rawGstin,
       })
     );
@@ -396,6 +420,10 @@ export async function autoUpsertClientFromInvoice(invoice: InvoiceRecord): Promi
       const updatedClient: ClientRecord = { ...match };
       if (!match.mobile && rawMobile) {
         updatedClient.mobile = rawMobile;
+        needsUpdate = true;
+      }
+      if (!match.email && rawEmail) {
+        updatedClient.email = rawEmail;
         needsUpdate = true;
       }
       if (!match.gstin && rawGstin) {
@@ -415,6 +443,7 @@ export async function autoUpsertClientFromInvoice(invoice: InvoiceRecord): Promi
         companyName: rawName,
         address: rawAddress,
         mobile: rawMobile,
+        email: rawEmail,
         gstin: rawGstin,
       });
     }

@@ -7,6 +7,7 @@ import {
   Trash2,
   RefreshCw,
   Phone,
+  Mail,
   Loader2,
 } from 'lucide-react';
 import type { ClientRecord, InvoiceRecord } from '../types';
@@ -297,7 +298,7 @@ export const ClientsPage: React.FC<ClientsPageProps> = ({
                   <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#475569', fontWeight: 600 }}>
                     <th style={{ padding: '14px 20px' }}>Company / Customer Name</th>
                     <th style={{ padding: '14px 20px' }}>Complete Address</th>
-                    <th style={{ padding: '14px 20px' }}>Mobile Number</th>
+                    <th style={{ padding: '14px 20px' }}>Contact Details</th>
                     <th style={{ padding: '14px 20px' }}>GSTIN</th>
                     <th style={{ padding: '14px 20px', textAlign: 'center' }}>Invoices</th>
                     <th style={{ padding: '14px 20px', textAlign: 'right' }}>Actions</th>
@@ -351,11 +352,23 @@ export const ClientsPage: React.FC<ClientsPageProps> = ({
                         </td>
 
                         <td style={{ padding: '14px 20px', whiteSpace: 'nowrap' }}>
-                          {client.mobile ? (
-                            <span style={{ color: '#334155', fontWeight: 500 }}>{client.mobile}</span>
-                          ) : (
-                            <span style={{ color: '#94a3b8' }}>N/A</span>
-                          )}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            {client.mobile ? (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#334155', fontWeight: 500 }}>
+                                <Phone size={12} color="#64748b" />
+                                <span>{client.mobile}</span>
+                              </div>
+                            ) : null}
+                            {client.email ? (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#2563eb', fontSize: '12.5px' }}>
+                                <Mail size={12} color="#3b82f6" />
+                                <span>{client.email}</span>
+                              </div>
+                            ) : null}
+                            {!client.mobile && !client.email && (
+                              <span style={{ color: '#94a3b8' }}>N/A</span>
+                            )}
+                          </div>
                         </td>
 
                         <td style={{ padding: '14px 20px', whiteSpace: 'nowrap' }}>
@@ -513,6 +526,12 @@ export const ClientsPage: React.FC<ClientsPageProps> = ({
                         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                           <Phone size={12} />
                           <span>{client.mobile}</span>
+                        </div>
+                      )}
+                      {client.email && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#2563eb' }}>
+                          <Mail size={12} />
+                          <span>{client.email}</span>
                         </div>
                       )}
                       {client.gstin && (

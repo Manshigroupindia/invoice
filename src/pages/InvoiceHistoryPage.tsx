@@ -17,8 +17,10 @@ import {
   Calendar,
   FileSpreadsheet,
   Layers,
+  Send,
+  Mail,
 } from 'lucide-react';
-import type { InvoiceRecord, CompanySettings, InvoiceType } from '../types';
+import type { InvoiceRecord, CompanySettings, InvoiceType, ClientRecord } from '../types';
 import {
   subscribeInvoices,
   deleteInvoiceFirestore,
@@ -26,6 +28,7 @@ import {
   subscribeCompanySettings,
   isInvoiceOfType,
 } from '../services/firestoreService';
+import { subscribeClients, saveClientFirestore } from '../services/clientService';
 import {
   uploadInvoicePdfToDrive,
   connectGoogleDrive,
@@ -40,6 +43,7 @@ import { MonthlyBackupModal } from '../components/invoice/MonthlyBackupModal';
 import { MonthlyExcelModal } from '../components/invoice/MonthlyExcelModal';
 import { PdfFilenameModal } from '../components/invoice/PdfFilenameModal';
 import { ConfirmModal } from '../components/common/Feedback';
+import { ShareInvoiceModal } from '../components/invoice/ShareInvoiceModal';
 
 interface InvoiceHistoryPageProps {
   onSuccessToast: (msg: string) => void;
@@ -75,11 +79,19 @@ export const InvoiceHistoryPage: React.FC<InvoiceHistoryPageProps> = ({
   const [isMonthlyBackupOpen, setIsMonthlyBackupOpen] = useState(false);
   const [isMonthlyExcelOpen, setIsMonthlyExcelOpen] = useState(false);
 
+  // Clients state for contact resolution
+  const [clients, setClients] = useState<ClientRecord[]>([]);
+
   // PDF Filename Modal state (Requirement 7)
   const [invoiceForPdf, setInvoiceForPdf] = useState<InvoiceRecord | null>(null);
   const [pdfModalOpen, setPdfModalOpen] = useState(false);
   const [pdfDefaultFilename, setPdfDefaultFilename] = useState('');
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
+
+  // Share via WhatsApp & Email Modal state
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [shareChannel, setShareChannel] = useState<'whatsapp' | 'email'>('whatsapp');
+  const [invoiceToShare, setInvoiceToShare] = useState<InvoiceRecord | null>(null);
 
   // Google Drive client state
   const [driveConnected, setDriveConnected] = useState(false);
@@ -99,6 +111,9 @@ export const InvoiceHistoryPage: React.FC<InvoiceHistoryPageProps> = ({
       setDriveConnected(connected);
     });
 
+    // Subscribe to clients directory
+    const unsubClients = subscribeClients(setClients);
+
     // Subscribe to real-time invoices list from Firestore
     setIsLoading(true);
     const unsubInvoices = subscribeInvoices(
@@ -116,8 +131,28 @@ export const InvoiceHistoryPage: React.FC<InvoiceHistoryPageProps> = ({
       unsubSettings();
       unsubDrive();
       unsubInvoices();
+      unsubClients();
     };
   }, []);
+
+  const handleOpenShare = (invoice: InvoiceRecord, channel: 'whatsapp' | 'email') => {
+    setInvoiceToShare(invoice);
+    setShareChannel(channel);
+    setIsShareModalOpen(true);
+  };
+
+  const handleSaveContactToClient = async (
+    clientId: string,
+    contactData: { mobile?: string; email?: string }
+  ) => {
+    const existing = clients.find((c) => c.id === clientId);
+    if (!existing) return;
+    const updated = await saveClientFirestore({
+      ...existing,
+      ...contactData,
+    });
+    onSuccessToast(`Updated contact details for ${updated.companyName}.`);
+  };
 
   // Available year options (e.g. from 2023 to currentYear + 1)
   const yearOptions = useMemo(() => {
@@ -1260,6 +1295,26 @@ export const InvoiceHistoryPage: React.FC<InvoiceHistoryPageProps> = ({
                           <button
                             type="button"
                             className="btn btn-secondary"
+                            style={{ padding: '6px 10px', fontSize: '12px', color: '#16a34a', borderColor: '#bbf7d0' }}
+                            onClick={() => handleOpenShare(inv, 'whatsapp')}
+                            title="Send Invoice via WhatsApp"
+                          >
+                            <Send size={14} color="#16a34a" />
+                          </button>
+
+                          <button
+                            type="button"
+                            className="btn btn-secondary"
+                            style={{ padding: '6px 10px', fontSize: '12px', color: '#2563eb', borderColor: '#bfdbfe' }}
+                            onClick={() => handleOpenShare(inv, 'email')}
+                            title="Send Invoice via Email"
+                          >
+                            <Mail size={14} color="#2563eb" />
+                          </button>
+
+                          <button
+                            type="button"
+                            className="btn btn-secondary"
                             style={{ padding: '6px 10px', fontSize: '12px' }}
                             onClick={() => onDuplicateInvoice(inv)}
                             title="Duplicate as new invoice draft"
@@ -1447,6 +1502,28 @@ export const InvoiceHistoryPage: React.FC<InvoiceHistoryPageProps> = ({
                     <button
                       type="button"
                       className="btn btn-secondary"
+                      style={{ padding: '6px 4px', fontSize: '11.5px', flexDirection: 'column', gap: '2px', color: '#16a34a' }}
+                      onClick={() => handleOpenShare(inv, 'whatsapp')}
+                      title="Send via WhatsApp"
+                    >
+                      <Send size={14} color="#16a34a" />
+                      <span>WhatsApp</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      style={{ padding: '6px 4px', fontSize: '11.5px', flexDirection: 'column', gap: '2px', color: '#2563eb' }}
+                      onClick={() => handleOpenShare(inv, 'email')}
+                      title="Send via Email"
+                    >
+                      <Mail size={14} color="#2563eb" />
+                      <span>Email</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
                       style={{ padding: '6px 4px', fontSize: '11.5px', flexDirection: 'column', gap: '2px' }}
                       onClick={() => onDuplicateInvoice(inv)}
                       title="Duplicate"
@@ -1509,6 +1586,24 @@ export const InvoiceHistoryPage: React.FC<InvoiceHistoryPageProps> = ({
                 >
                   <Download size={14} />
                   <span>PDF</span>
+                </button>
+                <button
+                  className="btn btn-secondary"
+                  style={{ padding: '6px 12px', fontSize: '12px', color: '#16a34a', borderColor: '#86efac' }}
+                  onClick={() => handleOpenShare(previewInvoice, 'whatsapp')}
+                  title="Send Invoice via WhatsApp"
+                >
+                  <Send size={14} color="#16a34a" />
+                  <span>WhatsApp</span>
+                </button>
+                <button
+                  className="btn btn-secondary"
+                  style={{ padding: '6px 12px', fontSize: '12px', color: '#2563eb', borderColor: '#93c5fd' }}
+                  onClick={() => handleOpenShare(previewInvoice, 'email')}
+                  title="Send Invoice via Email"
+                >
+                  <Mail size={14} color="#2563eb" />
+                  <span>Email</span>
                 </button>
                 <button
                   onClick={() => setPreviewInvoice(null)}
@@ -1616,6 +1711,22 @@ export const InvoiceHistoryPage: React.FC<InvoiceHistoryPageProps> = ({
         defaultFilename={pdfDefaultFilename}
         onConfirm={handleConfirmDownloadPdf}
         isLoading={isDownloadingPdf}
+      />
+
+      {/* Requirement 1 & 2: Send Invoice via WhatsApp and Email Modal */}
+      <ShareInvoiceModal
+        isOpen={isShareModalOpen}
+        onClose={() => {
+          setIsShareModalOpen(false);
+          setInvoiceToShare(null);
+        }}
+        invoice={invoiceToShare}
+        channel={shareChannel}
+        companySettings={settings}
+        clients={clients}
+        onSaveContactToClient={handleSaveContactToClient}
+        onSuccessToast={onSuccessToast}
+        onErrorToast={onErrorToast}
       />
     </div>
   );

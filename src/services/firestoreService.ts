@@ -22,6 +22,25 @@ import {
 } from '../utils/financialYear';
 import { autoUpsertClientFromInvoice } from './clientService';
 
+export const DEFAULT_WHATSAPP_TEMPLATE = `Hello {CustomerName},
+
+Please find your invoice {InvoiceNumber} dated {InvoiceDate} for {InvoiceAmount}.
+
+Thank you for your business!
+
+{CompanyName}`;
+
+export const DEFAULT_EMAIL_SUBJECT_TEMPLATE = `Invoice {InvoiceNumber} - {CompanyName}`;
+
+export const DEFAULT_EMAIL_BODY_TEMPLATE = `Dear {CustomerName},
+
+Please find attached your invoice {InvoiceNumber} dated {InvoiceDate} for {InvoiceAmount}.
+
+Thank you for your business!
+
+Warm regards,
+{CompanyName}`;
+
 export const DEFAULT_SETTINGS: CompanySettings = {
   companyName: 'Manshi Group Of Services',
   addressLine1: 'Office No. 2B, 2nd Floor, Bhawani Market,',
@@ -48,6 +67,9 @@ export const DEFAULT_SETTINGS: CompanySettings = {
   normalInvoicePrefix: 'MGS',
   normalNextSequence: 1,
   appPin: '1234',
+  whatsappTemplate: DEFAULT_WHATSAPP_TEMPLATE,
+  emailSubjectTemplate: DEFAULT_EMAIL_SUBJECT_TEMPLATE,
+  emailBodyTemplate: DEFAULT_EMAIL_BODY_TEMPLATE,
 };
 
 // Document references
@@ -80,6 +102,9 @@ export function normalizeCompanySettings(data: Partial<CompanySettings>): Compan
     qrScannerUrl: data.qrScannerUrl || data.qrScannerDataUrl || '/assets/qr_scanner.jpg',
     logoDataUrl: data.logoUrl || data.logoDataUrl || '/assets/logo.png',
     qrScannerDataUrl: data.qrScannerUrl || data.qrScannerDataUrl || '/assets/qr_scanner.jpg',
+    whatsappTemplate: data.whatsappTemplate !== undefined ? data.whatsappTemplate : DEFAULT_WHATSAPP_TEMPLATE,
+    emailSubjectTemplate: data.emailSubjectTemplate !== undefined ? data.emailSubjectTemplate : DEFAULT_EMAIL_SUBJECT_TEMPLATE,
+    emailBodyTemplate: data.emailBodyTemplate !== undefined ? data.emailBodyTemplate : DEFAULT_EMAIL_BODY_TEMPLATE,
   };
 }
 
@@ -494,6 +519,7 @@ export function prepareInvoiceForFirestore(invoice: InvoiceRecord): InvoiceRecor
     customerName: (invoice.customerName || '').trim(),
     customerAddress: (invoice.customerAddress || '').trim(),
     customerMobile: invoice.customerMobile !== undefined && invoice.customerMobile !== null ? String(invoice.customerMobile).trim() : '',
+    customerEmail: invoice.customerEmail !== undefined && invoice.customerEmail !== null ? String(invoice.customerEmail).trim() : '',
     customerGstin: invoice.customerGstin !== undefined && invoice.customerGstin !== null ? String(invoice.customerGstin).trim() : '',
     cgstHsnSac: invoice.cgstHsnSac !== undefined && invoice.cgstHsnSac !== null ? String(invoice.cgstHsnSac).trim() : '',
     sgstHsnSac: invoice.sgstHsnSac !== undefined && invoice.sgstHsnSac !== null ? String(invoice.sgstHsnSac).trim() : '',

@@ -14,6 +14,8 @@ import {
   AlertCircle,
   Sparkles,
   Users,
+  Send,
+  Mail,
 } from 'lucide-react';
 import type { InvoiceRecord, InvoiceLineItem, CompanySettings, InvoiceType, TaxMode, ClientRecord } from '../types';
 import {
@@ -25,7 +27,7 @@ import {
   subscribeInvoices,
   isInvoiceOfType,
 } from '../services/firestoreService';
-import { subscribeClients } from '../services/clientService';
+import { subscribeClients, saveClientFirestore } from '../services/clientService';
 import { saveInvoice as saveLocalInvoice } from '../db';
 import { uploadInvoicePdfToDrive } from '../services/googleDriveClient';
 import { getIndianFinancialYear, formatIndianCurrency } from '../utils/financialYear';
@@ -34,6 +36,7 @@ import { downloadInvoicePDF, formatDefaultPdfFilename } from '../utils/pdfGenera
 import { InvoiceDocument } from '../components/invoice/InvoiceDocument';
 import { ConfirmModal } from '../components/common/Feedback';
 import { PdfFilenameModal } from '../components/invoice/PdfFilenameModal';
+import { ShareInvoiceModal } from '../components/invoice/ShareInvoiceModal';
 
 interface CreateInvoicePageProps {
   initialInvoice?: InvoiceRecord | null;
@@ -94,6 +97,7 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
   const [customerName, setCustomerName] = useState('');
   const [customerAddress, setCustomerAddress] = useState('');
   const [customerMobile, setCustomerMobile] = useState('');
+  const [customerEmail, setCustomerEmail] = useState('');
   const [customerGstin, setCustomerGstin] = useState('');
   const [items, setItems] = useState<InvoiceLineItem[]>(SAMPLE_REFERENCE_ITEMS);
 
@@ -104,6 +108,7 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
     companyName: string;
     address: string;
     mobile: string;
+    email: string;
     gstin: string;
   } | null>(null);
 
@@ -116,6 +121,11 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
   const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
   const [defaultPdfFilename, setDefaultPdfFilename] = useState('');
   const [isSavingAndDownloading, setIsSavingAndDownloading] = useState(false);
+
+  // Share via WhatsApp & Email modal state
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [shareChannel, setShareChannel] = useState<'whatsapp' | 'email'>('whatsapp');
+  const [invoiceToShare, setInvoiceToShare] = useState<InvoiceRecord | null>(null);
 
   // UI States
   const [previewScale, setPreviewScale] = useState(() => {
@@ -170,12 +180,14 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
         companyName: initialClient.companyName || '',
         address: initialClient.address || '',
         mobile: initialClient.mobile || '',
+        email: initialClient.email || '',
         gstin: initialClient.gstin || '',
       });
       setIsCustomerOverridden(false);
       setCustomerName(initialClient.companyName || '');
       setCustomerAddress(initialClient.address || '');
       setCustomerMobile(initialClient.mobile || '');
+      setCustomerEmail(initialClient.email || '');
       setCustomerGstin(initialClient.gstin || '');
     }
   }, [initialClient, initialInvoice]);
@@ -189,6 +201,7 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
           companyName: match.companyName || '',
           address: match.address || '',
           mobile: match.mobile || '',
+          email: match.email || '',
           gstin: match.gstin || '',
         });
       }
@@ -235,6 +248,7 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
         setCustomerName(initialInvoice.customerName);
         setCustomerAddress(initialInvoice.customerAddress);
         setCustomerMobile(initialInvoice.customerMobile || '');
+        setCustomerEmail(initialInvoice.customerEmail || '');
         setCustomerGstin(initialInvoice.customerGstin || '');
         setItems(initialInvoice.items.length > 0 ? initialInvoice.items : SAMPLE_REFERENCE_ITEMS);
       } else {
@@ -251,6 +265,7 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
         setCgstHsnSac('');
         setSgstHsnSac('');
         setIgstHsnSac('');
+        setCustomerEmail('');
         setCustomerGstin('');
         const today = new Date().toISOString().slice(0, 10);
         setInvoiceDate(today);
@@ -404,6 +419,7 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
     name: string,
     addr: string,
     mob: string,
+    em: string,
     gst: string,
     orig: typeof selectedClientOriginal
   ) => {
@@ -412,6 +428,7 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
       name.trim() !== orig.companyName.trim() ||
       addr.trim() !== orig.address.trim() ||
       mob.trim() !== orig.mobile.trim() ||
+      em.trim().toLowerCase() !== (orig.email || '').trim().toLowerCase() ||
       gst.trim().toUpperCase() !== orig.gstin.trim().toUpperCase()
     );
   };
@@ -426,6 +443,7 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
     customerName: customerName.trim(),
     customerAddress: customerAddress.trim(),
     customerMobile: customerMobile.trim(),
+    customerEmail: customerEmail.trim(),
     customerGstin: customerGstin.trim(),
     items: items.filter(it => it.description.trim() !== '' || (it.amount !== '' && Number(it.amount) > 0)),
     subtotal,
@@ -461,12 +479,14 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
       companyName: c.companyName || '',
       address: c.address || '',
       mobile: c.mobile || '',
+      email: c.email || '',
       gstin: c.gstin || '',
     });
     setIsCustomerOverridden(false);
     setCustomerName(c.companyName || '');
     setCustomerAddress(c.address || '');
     setCustomerMobile(c.mobile || '');
+    setCustomerEmail(c.email || '');
     setCustomerGstin(c.gstin || '');
     onSuccessToast(`Loaded customer details for ${c.companyName}.`);
   };
@@ -476,6 +496,7 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
     setCustomerName(selectedClientOriginal.companyName);
     setCustomerAddress(selectedClientOriginal.address);
     setCustomerMobile(selectedClientOriginal.mobile);
+    setCustomerEmail(selectedClientOriginal.email || '');
     setCustomerGstin(selectedClientOriginal.gstin);
     setIsCustomerOverridden(false);
     onSuccessToast('Reset customer details to saved client record.');
@@ -614,6 +635,55 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
     }
   };
 
+  // Requirement 1 & 2: Send Invoice via WhatsApp and Email
+  const handleOpenShare = async (channel: 'whatsapp' | 'email') => {
+    if (!customerName.trim()) {
+      onErrorToast('Customer / Business Name is required before sharing.');
+      return;
+    }
+    if (!customerAddress.trim()) {
+      onErrorToast('Customer Address is required before sharing.');
+      return;
+    }
+    if (items.length === 0 || !items.some((i) => i.description.trim())) {
+      onErrorToast('Please add at least one line item before sharing.');
+      return;
+    }
+    if (isDuplicateNumber) {
+      onErrorToast('This invoice number already exists. Please enter a unique invoice number.');
+      return;
+    }
+
+    try {
+      setIsSaving(true);
+      // Auto-save invoice first to ensure all data & sequence are locked in Firestore
+      const saved = await saveInvoiceRecordCore();
+      setInvoiceToShare(saved);
+      setShareChannel(channel);
+      setIsShareModalOpen(true);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to prepare invoice for sharing';
+      onErrorToast(msg);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSaveContactToClient = async (
+    clientId: string,
+    contactData: { mobile?: string; email?: string }
+  ) => {
+    const existing = clients.find((c) => c.id === clientId);
+    if (!existing) return;
+    const updated = await saveClientFirestore({
+      ...existing,
+      ...contactData,
+    });
+    if (contactData.mobile !== undefined) setCustomerMobile(contactData.mobile);
+    if (contactData.email !== undefined) setCustomerEmail(contactData.email);
+    onSuccessToast(`Updated contact details for ${updated.companyName}.`);
+  };
+
   const handlePrint = () => {
     window.print();
   };
@@ -626,6 +696,7 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
     setCustomerName('');
     setCustomerAddress('');
     setCustomerMobile('');
+    setCustomerEmail('');
     setCustomerGstin('');
     setItems([{ id: `item-${Date.now()}`, description: '', hsnSac: '', amount: '' }]);
     setInvoiceType('regular');
@@ -692,6 +763,30 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
           >
             <Download size={16} />
             <span>{isSavingAndDownloading ? 'Saving & Generating...' : 'Download PDF'}</span>
+          </button>
+
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => handleOpenShare('whatsapp')}
+            disabled={isSaving || isSavingAndDownloading}
+            style={{ borderColor: '#86efac', color: '#15803d' }}
+            title="Send Invoice via WhatsApp"
+          >
+            <Send size={15} color="#16a34a" />
+            <span>Send WhatsApp</span>
+          </button>
+
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => handleOpenShare('email')}
+            disabled={isSaving || isSavingAndDownloading}
+            style={{ borderColor: '#93c5fd', color: '#1d4ed8' }}
+            title="Send Invoice via Email"
+          >
+            <Mail size={15} color="#2563eb" />
+            <span>Send Email</span>
           </button>
 
           <button
@@ -920,7 +1015,7 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
                   setCustomerName(val);
                   if (selectedClientOriginal) {
                     setIsCustomerOverridden(
-                      checkCustomerOverridden(val, customerAddress, customerMobile, customerGstin, selectedClientOriginal)
+                      checkCustomerOverridden(val, customerAddress, customerMobile, customerEmail, customerGstin, selectedClientOriginal)
                     );
                   }
                 }}
@@ -940,7 +1035,7 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
                   setCustomerAddress(val);
                   if (selectedClientOriginal) {
                     setIsCustomerOverridden(
-                      checkCustomerOverridden(customerName, val, customerMobile, customerGstin, selectedClientOriginal)
+                      checkCustomerOverridden(customerName, val, customerMobile, customerEmail, customerGstin, selectedClientOriginal)
                     );
                   }
                 }}
@@ -948,23 +1043,44 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
               />
             </div>
 
-            <div className="form-group" style={{ marginBottom: invoiceType === 'tax' ? '16px' : 0 }}>
-              <label className="form-label">Customer Mobile Number (Optional)</label>
-              <input
-                type="text"
-                className="form-input"
-                placeholder="e.g. +91 88604 30075"
-                value={customerMobile}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setCustomerMobile(val);
-                  if (selectedClientOriginal) {
-                    setIsCustomerOverridden(
-                      checkCustomerOverridden(customerName, customerAddress, val, customerGstin, selectedClientOriginal)
-                    );
-                  }
-                }}
-              />
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px', marginBottom: invoiceType === 'tax' ? '16px' : 0 }}>
+              <div className="form-group" style={{ margin: 0 }}>
+                <label className="form-label">Customer Mobile Number</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder="e.g. +91 88604 30075"
+                  value={customerMobile}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setCustomerMobile(val);
+                    if (selectedClientOriginal) {
+                      setIsCustomerOverridden(
+                        checkCustomerOverridden(customerName, customerAddress, val, customerEmail, customerGstin, selectedClientOriginal)
+                      );
+                    }
+                  }}
+                />
+              </div>
+
+              <div className="form-group" style={{ margin: 0 }}>
+                <label className="form-label">Customer Email Address</label>
+                <input
+                  type="email"
+                  className="form-input"
+                  placeholder="e.g. client@example.com"
+                  value={customerEmail}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setCustomerEmail(val);
+                    if (selectedClientOriginal) {
+                      setIsCustomerOverridden(
+                        checkCustomerOverridden(customerName, customerAddress, customerMobile, val, customerGstin, selectedClientOriginal)
+                      );
+                    }
+                  }}
+                />
+              </div>
             </div>
 
             {invoiceType === 'tax' && (
@@ -980,7 +1096,7 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
                     setCustomerGstin(val);
                     if (selectedClientOriginal) {
                       setIsCustomerOverridden(
-                        checkCustomerOverridden(customerName, customerAddress, customerMobile, val, selectedClientOriginal)
+                        checkCustomerOverridden(customerName, customerAddress, customerMobile, customerEmail, val, selectedClientOriginal)
                       );
                     }
                   }}
@@ -1547,6 +1663,22 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
         defaultFilename={defaultPdfFilename}
         onConfirm={handleConfirmPdfDownload}
         isLoading={isSavingAndDownloading}
+      />
+
+      {/* Requirement 1 & 2: Send Invoice via WhatsApp and Email Modal */}
+      <ShareInvoiceModal
+        isOpen={isShareModalOpen}
+        onClose={() => {
+          setIsShareModalOpen(false);
+          setInvoiceToShare(null);
+        }}
+        invoice={invoiceToShare}
+        channel={shareChannel}
+        companySettings={settings}
+        clients={clients}
+        onSaveContactToClient={handleSaveContactToClient}
+        onSuccessToast={onSuccessToast}
+        onErrorToast={onErrorToast}
       />
     </div>
   );

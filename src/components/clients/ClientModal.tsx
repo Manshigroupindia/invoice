@@ -28,6 +28,7 @@ export const ClientModal: React.FC<ClientModalProps> = ({
   const [companyName, setCompanyName] = useState('');
   const [address, setAddress] = useState('');
   const [mobile, setMobile] = useState('');
+  const [email, setEmail] = useState('');
   const [gstin, setGstin] = useState('');
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
   const [forceSyncOverridden, setForceSyncOverridden] = useState(false);
@@ -44,11 +45,13 @@ export const ClientModal: React.FC<ClientModalProps> = ({
         setCompanyName(client.companyName || '');
         setAddress(client.address || '');
         setMobile(client.mobile || '');
+        setEmail(client.email || '');
         setGstin(client.gstin || '');
       } else {
         setCompanyName('');
         setAddress('');
         setMobile('');
+        setEmail('');
         setGstin('');
       }
       setDuplicateWarning(null);
@@ -67,6 +70,7 @@ export const ClientModal: React.FC<ClientModalProps> = ({
       id: client?.id,
       companyName: companyName.trim(),
       mobile: mobile.trim(),
+      email: email.trim(),
       gstin: gstin.trim(),
     };
 
@@ -76,7 +80,7 @@ export const ClientModal: React.FC<ClientModalProps> = ({
     } else {
       setDuplicateWarning(null);
     }
-  }, [companyName, mobile, gstin, existingClients, client]);
+  }, [companyName, mobile, email, gstin, existingClients, client]);
 
   if (!isOpen) return null;
 
@@ -90,6 +94,7 @@ export const ClientModal: React.FC<ClientModalProps> = ({
         companyName: companyName.trim(),
         address: address.trim(),
         mobile: mobile.trim(),
+        email: email.trim(),
         gstin: gstin.trim().toUpperCase(),
       },
       forceSyncOverridden
@@ -294,17 +299,31 @@ export const ClientModal: React.FC<ClientModalProps> = ({
 
               <div className="form-group" style={{ margin: 0 }}>
                 <label className="form-label" style={{ fontSize: '13px', fontWeight: 600 }}>
-                  GSTIN
+                  Email Address
                 </label>
                 <input
-                  type="text"
+                  type="email"
                   className="form-input"
-                  value={gstin}
-                  onChange={(e) => setGstin(e.target.value.toUpperCase())}
-                  placeholder="e.g. 09ARJPY9074A1Z9"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="e.g. client@example.com"
                   disabled={isLoading}
                 />
               </div>
+            </div>
+
+            <div className="form-group" style={{ margin: 0 }}>
+              <label className="form-label" style={{ fontSize: '13px', fontWeight: 600 }}>
+                GSTIN
+              </label>
+              <input
+                type="text"
+                className="form-input"
+                value={gstin}
+                onChange={(e) => setGstin(e.target.value.toUpperCase())}
+                placeholder="e.g. 09ARJPY9074A1Z9"
+                disabled={isLoading}
+              />
             </div>
           </div>
 

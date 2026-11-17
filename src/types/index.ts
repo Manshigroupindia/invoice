@@ -3,6 +3,7 @@ export interface ClientRecord {
   companyName: string;
   address: string;
   mobile?: string;
+  email?: string;
   gstin?: string;
   createdAt: string;
   updatedAt: string;
@@ -37,6 +38,9 @@ export interface CompanySettings {
   updatedAt?: string;
   googleDriveClientId?: string; // Optional client-side OAuth Client ID override
   appPin?: string; // 4-digit website PIN lock (default: '1234')
+  whatsappTemplate?: string; // Message template for WhatsApp sharing
+  emailSubjectTemplate?: string; // Subject template for Email sharing
+  emailBodyTemplate?: string; // Body template for Email sharing
 }
 
 export interface InvoiceLineItem {
@@ -62,6 +66,7 @@ export interface InvoiceRecord {
   customerName: string;
   customerAddress: string;
   customerMobile?: string;
+  customerEmail?: string;
   customerGstin?: string;
   items: InvoiceLineItem[];
   subtotal: number;
