@@ -12,6 +12,7 @@
   "dependencies": {
     "@capacitor/android": "^8.6.2",
     "@capacitor/core": "^8.6.2",
+    "@capgo/capacitor-updater": "^8.54.2",
     "dexie": "^4.4.6",
     "exceljs": "^4.4.0",
     "firebase": "^13.0.0",
