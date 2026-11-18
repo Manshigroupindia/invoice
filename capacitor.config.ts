@@ -8,9 +8,12 @@ const config: CapacitorConfig = {
     SystemBars: {
       insetsHandling: 'css',
       style: 'LIGHT',
-      hidden: false,
+      hidden: false
     },
-  },
+    CapacitorUpdater: {
+      appId: 'in.manshigroup.manshiinvoice'
+    }
+  }
 };
 
 export default config;
