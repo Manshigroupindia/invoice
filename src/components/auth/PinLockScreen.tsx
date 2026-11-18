@@ -140,7 +140,7 @@ export const PinLockScreen: React.FC<PinLockScreenProps> = ({ onUnlock }) => {
       alignItems: 'center',
       justifyContent: 'center',
       zIndex: 99999,
-      padding: '20px',
+      padding: 'calc(20px + var(--safe-area-top, env(safe-area-inset-top, 0px))) calc(20px + var(--safe-area-right, env(safe-area-inset-right, 0px))) calc(20px + var(--safe-area-bottom, env(safe-area-inset-bottom, 0px))) calc(20px + var(--safe-area-left, env(safe-area-inset-left, 0px)))',
       boxSizing: 'border-box',
       userSelect: 'none',
       fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',

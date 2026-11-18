@@ -32,11 +32,13 @@ import { saveInvoice as saveLocalInvoice } from '../db';
 import { uploadInvoicePdfToDrive } from '../services/googleDriveClient';
 import { getIndianFinancialYear, formatIndianCurrency } from '../utils/financialYear';
 import { calculateInvoiceTotals } from '../utils/taxCalculator';
-import { downloadInvoicePDF, formatDefaultPdfFilename } from '../utils/pdfGenerator';
+import { formatDefaultPdfFilename } from '../utils/pdfGenerator';
+import { downloadInvoicePDFUnified, type AndroidDownloadResult } from '../utils/androidPdfDownload';
 import { InvoiceDocument } from '../components/invoice/InvoiceDocument';
 import { ConfirmModal } from '../components/common/Feedback';
 import { PdfFilenameModal } from '../components/invoice/PdfFilenameModal';
 import { ShareInvoiceModal } from '../components/invoice/ShareInvoiceModal';
+import { AndroidDownloadSuccessModal } from '../components/invoice/AndroidDownloadSuccessModal';
 
 interface CreateInvoicePageProps {
   initialInvoice?: InvoiceRecord | null;
@@ -121,6 +123,7 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
   const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
   const [defaultPdfFilename, setDefaultPdfFilename] = useState('');
   const [isSavingAndDownloading, setIsSavingAndDownloading] = useState(false);
+  const [androidDownloadSuccess, setAndroidDownloadSuccess] = useState<AndroidDownloadResult | null>(null);
 
   // Share via WhatsApp & Email modal state
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
@@ -618,14 +621,20 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
     try {
       setIsSavingAndDownloading(true);
 
-      // Requirement 8: Save the invoice to Firestore first
+      // Save the invoice to Firestore first
       const savedInvoice = await saveInvoiceRecordCore();
       onSuccessToast(`Invoice ${savedInvoice.invoiceNumber} saved to Cloud Firestore.`);
 
-      // After successful save, generate and download PDF
-      await downloadInvoicePDF(savedInvoice, settings || undefined, chosenFilename);
-      onSuccessToast('A4 PDF generated and downloaded successfully.');
+      // After successful save, generate and download PDF using unified downloader
+      const downloadRes = await downloadInvoicePDFUnified(savedInvoice, settings || undefined, chosenFilename);
       setIsPdfModalOpen(false);
+
+      if (downloadRes.isNative && downloadRes.result) {
+        setAndroidDownloadSuccess(downloadRes.result);
+        onSuccessToast(`PDF saved to ${downloadRes.result.location}${downloadRes.result.filename}`);
+      } else {
+        onSuccessToast('A4 PDF generated and downloaded successfully.');
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to save invoice or download PDF';
       onErrorToast(msg);
@@ -1663,6 +1672,14 @@ export const CreateInvoicePage: React.FC<CreateInvoicePageProps> = ({
         defaultFilename={defaultPdfFilename}
         onConfirm={handleConfirmPdfDownload}
         isLoading={isSavingAndDownloading}
+      />
+
+      {/* Android Native PDF Download Success Confirmation Modal */}
+      <AndroidDownloadSuccessModal
+        isOpen={androidDownloadSuccess !== null}
+        onClose={() => setAndroidDownloadSuccess(null)}
+        downloadData={androidDownloadSuccess}
+        onErrorToast={onErrorToast}
       />
 
       {/* Requirement 1 & 2: Send Invoice via WhatsApp and Email Modal */}

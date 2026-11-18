@@ -4,6 +4,12 @@
   --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
   --font-display: 'Outfit', 'Plus Jakarta Sans', sans-serif;
 
+  /* Safe Area Insets for Mobile & Android System Bars */
+  --safe-area-top: env(safe-area-inset-top, var(--safe-area-inset-top, 0px));
+  --safe-area-bottom: env(safe-area-inset-bottom, var(--safe-area-inset-bottom, 0px));
+  --safe-area-left: env(safe-area-inset-left, var(--safe-area-inset-left, 0px));
+  --safe-area-right: env(safe-area-inset-right, var(--safe-area-inset-right, 0px));
+
   /* Color Palette - Executive Slate & Deep Navy */
   --color-primary: #1e3a8a;
   --color-primary-hover: #1d4ed8;
@@ -39,6 +45,11 @@
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 14px;
+}
+
+/* Android Capacitor specific safe-area enforcement */
+html.is-android {
+  --safe-area-top: max(24px, env(safe-area-inset-top, var(--safe-area-inset-top, 0px)));
 }
 
 * {
@@ -205,6 +216,8 @@ html, body {
 
 .sidebar-brand {
   padding: 20px;
+  padding-top: calc(20px + var(--safe-area-top));
+  padding-left: calc(20px + var(--safe-area-left));
   display: flex;
   align-items: center;
   gap: 12px;
@@ -281,6 +294,8 @@ html, body {
 
 .sidebar-footer {
   padding: 16px;
+  padding-bottom: calc(16px + var(--safe-area-bottom));
+  padding-left: calc(16px + var(--safe-area-left));
   border-top: 1px solid rgba(255, 255, 255, 0.08);
   display: flex;
   flex-direction: column;
@@ -343,6 +358,9 @@ html, body {
   background: #ffffff;
   border-bottom: 1px solid var(--color-border);
   padding: 12px 28px;
+  padding-top: calc(12px + var(--safe-area-top));
+  padding-left: calc(28px + var(--safe-area-left));
+  padding-right: calc(28px + var(--safe-area-right));
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -397,17 +415,25 @@ html, body {
 @media (max-width: 900px) {
   .app-topbar {
     padding: 10px 16px;
+    padding-top: calc(10px + var(--safe-area-top));
+    padding-left: calc(16px + var(--safe-area-left));
+    padding-right: calc(16px + var(--safe-area-right));
   }
 
   .page-content-area {
     padding: 16px 14px;
-    padding-bottom: max(20px, env(safe-area-inset-bottom));
+    padding-bottom: calc(20px + var(--safe-area-bottom));
+    padding-left: calc(14px + var(--safe-area-left));
+    padding-right: calc(14px + var(--safe-area-right));
   }
 }
 
 @media (max-width: 600px) {
   .app-topbar {
     padding: 8px 12px;
+    padding-top: calc(8px + var(--safe-area-top));
+    padding-left: calc(12px + var(--safe-area-left));
+    padding-right: calc(12px + var(--safe-area-right));
   }
 
   .topbar-title-group h2 {
@@ -420,6 +446,9 @@ html, body {
 
   .page-content-area {
     padding: 12px 10px;
+    padding-bottom: calc(20px + var(--safe-area-bottom));
+    padding-left: calc(10px + var(--safe-area-left));
+    padding-right: calc(10px + var(--safe-area-right));
   }
 }
 

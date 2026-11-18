@@ -36,7 +36,8 @@ import {
 } from '../services/googleDriveClient';
 import { deleteInvoice as deleteLocalInvoice } from '../db';
 import { formatDateToIndian, formatIndianCurrency, compareInvoiceNumbersAsc } from '../utils/financialYear';
-import { downloadInvoicePDF, formatDefaultPdfFilename } from '../utils/pdfGenerator';
+import { formatDefaultPdfFilename } from '../utils/pdfGenerator';
+import { downloadInvoicePDFUnified, type AndroidDownloadResult } from '../utils/androidPdfDownload';
 import { MONTH_NAMES } from '../utils/monthlyBackupService';
 import { InvoiceDocument } from '../components/invoice/InvoiceDocument';
 import { MonthlyBackupModal } from '../components/invoice/MonthlyBackupModal';
@@ -44,6 +45,7 @@ import { MonthlyExcelModal } from '../components/invoice/MonthlyExcelModal';
 import { PdfFilenameModal } from '../components/invoice/PdfFilenameModal';
 import { ConfirmModal } from '../components/common/Feedback';
 import { ShareInvoiceModal } from '../components/invoice/ShareInvoiceModal';
+import { AndroidDownloadSuccessModal } from '../components/invoice/AndroidDownloadSuccessModal';
 
 interface InvoiceHistoryPageProps {
   onSuccessToast: (msg: string) => void;
@@ -87,6 +89,7 @@ export const InvoiceHistoryPage: React.FC<InvoiceHistoryPageProps> = ({
   const [pdfModalOpen, setPdfModalOpen] = useState(false);
   const [pdfDefaultFilename, setPdfDefaultFilename] = useState('');
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
+  const [androidDownloadSuccess, setAndroidDownloadSuccess] = useState<AndroidDownloadResult | null>(null);
 
   // Share via WhatsApp & Email Modal state
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
@@ -200,10 +203,17 @@ export const InvoiceHistoryPage: React.FC<InvoiceHistoryPageProps> = ({
     if (!invoiceForPdf) return;
     try {
       setIsDownloadingPdf(true);
-      await downloadInvoicePDF(invoiceForPdf, settings || undefined, chosenFilename);
-      onSuccessToast(`Downloaded PDF for invoice ${invoiceForPdf.invoiceNumber}.`);
+      const downloadRes = await downloadInvoicePDFUnified(invoiceForPdf, settings || undefined, chosenFilename);
       setPdfModalOpen(false);
+      const invoiceNum = invoiceForPdf.invoiceNumber;
       setInvoiceForPdf(null);
+
+      if (downloadRes.isNative && downloadRes.result) {
+        setAndroidDownloadSuccess(downloadRes.result);
+        onSuccessToast(`PDF saved to ${downloadRes.result.location}${downloadRes.result.filename}`);
+      } else {
+        onSuccessToast(`Downloaded PDF for invoice ${invoiceNum}.`);
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'PDF generation failed';
       onErrorToast(msg);
@@ -1711,6 +1721,14 @@ export const InvoiceHistoryPage: React.FC<InvoiceHistoryPageProps> = ({
         defaultFilename={pdfDefaultFilename}
         onConfirm={handleConfirmDownloadPdf}
         isLoading={isDownloadingPdf}
+      />
+
+      {/* Android Native PDF Download Success Confirmation Modal */}
+      <AndroidDownloadSuccessModal
+        isOpen={androidDownloadSuccess !== null}
+        onClose={() => setAndroidDownloadSuccess(null)}
+        downloadData={androidDownloadSuccess}
+        onErrorToast={onErrorToast}
       />
 
       {/* Requirement 1 & 2: Send Invoice via WhatsApp and Email Modal */}

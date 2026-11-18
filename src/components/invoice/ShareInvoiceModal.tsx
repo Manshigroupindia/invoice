@@ -24,6 +24,7 @@ import {
   sanitizePdfFilename,
   getInvoicePDFBlob,
 } from '../../utils/pdfGenerator';
+import { downloadInvoicePDFUnified } from '../../utils/androidPdfDownload';
 import {
   DEFAULT_WHATSAPP_TEMPLATE,
   DEFAULT_EMAIL_SUBJECT_TEMPLATE,
@@ -265,10 +266,13 @@ export const ShareInvoiceModal: React.FC<ShareInvoiceModalProps> = ({
     try {
       setIsDownloadingPdf(true);
       const activeSettings = companySettings || undefined;
-      const { doc } = await getInvoicePDFBlob(invoice, activeSettings);
       const safeFilename = sanitizePdfFilename(filenameInput);
-      doc.save(safeFilename);
-      onSuccessToast(`Invoice PDF downloaded: "${safeFilename}"`);
+      const res = await downloadInvoicePDFUnified(invoice, activeSettings, safeFilename);
+      if (res.isNative && res.result) {
+        onSuccessToast(`PDF saved to ${res.result.location}${res.result.filename}`);
+      } else {
+        onSuccessToast(`Invoice PDF downloaded: "${safeFilename}"`);
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to download PDF';
       onErrorToast(msg);

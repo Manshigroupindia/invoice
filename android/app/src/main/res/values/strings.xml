@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Manshi Invoice</string>
+    <string name="title_activity_main">Manshi Invoice</string>
+    <string name="package_name">in.manshigroup.manshiinvoice</string>
+    <string name="custom_url_scheme">in.manshigroup.manshiinvoice</string>
+</resources>
